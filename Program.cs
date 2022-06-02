@@ -13,7 +13,17 @@ namespace BridgeServer
     {
         private static int port = 25565;
 
-        private static int bufferSize = 4096;
+        public static int bufferSize = 4096;
+        public static int sendRate = 60;
+
+        public enum ConnectionState
+        {
+            OFFLINE,
+            WAITING_FOR_ACTION,
+        }
+
+        public static List<Connection> connections = new List<Connection>();
+        public static List<ConnectionState> connectionStates = new List<ConnectionState>();
 
         static void Main(string[] args)
         {
@@ -28,11 +38,31 @@ namespace BridgeServer
                 Console.WriteLine("Connection accepted!");
                 NetworkStream networkStream = client.GetStream();
 
-                byte[] sendBuffer = new Packet(Packet.PacketType.DEBUG_PACKET).AddValue("Debug!").ToBytes();
+                Connection connection = new Connection();
+                connection.onPacketRecieved += HandlePacket;
+                connection.onConnectionModeUpdated += ConnectionModeUpdated;
 
-                networkStream.Write(sendBuffer, 0, sendBuffer.Length);
+                connections.Add(connection);
+                connectionStates.Add(ConnectionState.OFFLINE);
 
-                //SkyBridge.me.connections.Add(new Connection(client, networkStream, client.Client.RemoteEndPoint.ToString(), false));
+                connection.Assign(client, networkStream);
+            }
+        }
+
+        public static void HandlePacket(Connection connection, Packet packet)
+        {
+
+        }
+
+        public static void ConnectionModeUpdated(Connection connection, Connection.ConnectionMode connectionMode)
+        {
+            Console.WriteLine("Connection " + connection.IP + ":" + connection.port + " updated to mode " + connectionMode);
+
+            if (connectionMode == Connection.ConnectionMode.CONNECTED)
+            {
+                connectionStates[connections.IndexOf(connection)] = ConnectionState.WAITING_FOR_ACTION;
+
+                Console.WriteLine("Connection updated to state " + connectionStates[connections.IndexOf(connection)]);
             }
         }
     }
