@@ -22,7 +22,9 @@ namespace BridgeServer
         {
             OFFLINE,
             WAITING_FOR_ACTION,
-            HOSTING_ROOM
+            HOSTING_ROOM,
+            ATTEMPTING_TO_JOIN,
+            REJECTED
         }
 
         public static List<Connection> connections = new List<Connection>();
@@ -74,12 +76,37 @@ namespace BridgeServer
                         hostConnection = connection,
                     });
                 }
-            }else if (packet.packetType == Packet.PacketType.JOIN_GAME)
+
+                connectionStates[connections.IndexOf(connection)] = ConnectionState.HOSTING_ROOM;
+
+                Console.WriteLine("Connection updated to state " + connectionStates[connections.IndexOf(connection)]);
+            }
+            else if (packet.packetType == Packet.PacketType.JOIN_GAME)
             {
                 string roomID = (string)packet.values[0].unserializedValue;
                 string roomPassword = (string)packet.values[1].unserializedValue;
 
                 Console.WriteLine("Trying to join room " + roomID + " with password " + roomPassword);
+
+                connectionStates[connections.IndexOf(connection)] = ConnectionState.ATTEMPTING_TO_JOIN;
+
+                Console.WriteLine("Connection updated to state " + connectionStates[connections.IndexOf(connection)]);
+
+                lock (rooms)
+                {
+                    Room room = rooms.Find(room => room.ID == roomID);
+
+                    if(room == null)
+                    {
+                        connection.QueuePacket(new Packet(Packet.PacketType.ERROR).AddValue(000).AddValue("No Room Found!"));
+                    }else if (room.password != roomPassword)
+                    {
+                        connection.QueuePacket(new Packet(Packet.PacketType.ERROR).AddValue(001).AddValue("Wrong Password!"));
+                    }else
+                    {
+                        room.hostConnection.QueuePacket(new Packet(Packet.PacketType.SIGNAL_JOIN));
+                    }
+                }
             }
         }
 

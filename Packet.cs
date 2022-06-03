@@ -13,7 +13,9 @@ namespace BridgeServer
             DEBUG_PACKET,
             HOST_GAME,
             READY,
-            JOIN_GAME
+            JOIN_GAME,
+            ERROR,
+            SIGNAL_JOIN
         }
 
         [Serializable]
