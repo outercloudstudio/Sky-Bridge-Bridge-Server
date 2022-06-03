@@ -11,7 +11,9 @@ namespace BridgeServer
         public enum PacketType
         {
             DEBUG_PACKET,
-            HOST_GAME
+            HOST_GAME,
+            SEND_ROOMS,
+            JOIN_GAME
         }
 
         [Serializable]
