@@ -7,7 +7,7 @@ using System.Threading;
 
 namespace BridgeServer
 {
-    [System.Serializable]
+    [Serializable]
     public class Connection
     {
         public enum ConnectionMode
@@ -23,15 +23,10 @@ namespace BridgeServer
         private Thread connectThread;
 
         private Thread dataListenerThread;
-        private bool abortDataListenerThread = false;
         private Thread dataSenderThread;
-        private bool abortDataSenderThread = false;
 
         private TcpClient client;
         private NetworkStream networkStream;
-
-        public delegate void ConnectionModeUpdated(Connection connection, ConnectionMode connectionMode);
-        public ConnectionModeUpdated onConnectionModeUpdated;
 
         public delegate void PacketRecieved(Connection connection, Packet packet);
         public PacketRecieved onPacketRecieved;
@@ -40,13 +35,15 @@ namespace BridgeServer
         public int port;
 
         private List<Packet> sendQueue = new List<Packet>();
+
+        private List<Packet> readQueue = new List<Packet>();
+
         public void Connect(string _IP, int _port)
         {
             IP = _IP;
             port = _port;
 
             connectionMode = ConnectionMode.CONNECTING;
-            if (onConnectionModeUpdated != null) onConnectionModeUpdated(this, connectionMode);
 
             connectThread = new Thread(ConnectThreaded);
             connectThread.Start();
@@ -61,7 +58,6 @@ namespace BridgeServer
             networkStream = _networkStream;
 
             connectionMode = ConnectionMode.CONNECTED;
-            if (onConnectionModeUpdated != null) onConnectionModeUpdated(this, connectionMode);
 
             StartThreads();
         }
@@ -73,7 +69,6 @@ namespace BridgeServer
             networkStream = client.GetStream();
 
             connectionMode = ConnectionMode.CONNECTED;
-            if (onConnectionModeUpdated != null) onConnectionModeUpdated(this, connectionMode);
 
             StartThreads();
         }
@@ -87,11 +82,26 @@ namespace BridgeServer
             dataListenerThread.Start();
         }
 
-        public void QueuePacket(Packet packet)
+        public void SendPacket(Packet packet)
         {
             lock (sendQueue)
             {
+                Console.WriteLine("Main Thread: Sending packet " + packet.packetType + " to " + IP + ":" + port);
                 sendQueue.Add(packet);
+            }
+        }
+
+        public void Update()
+        {
+            lock (readQueue)
+            {
+                foreach (Packet packet in readQueue)
+                {
+                    Console.WriteLine("Main Thread: Handleing packet " + packet.packetType + " from " + IP + ":" + port);
+                    if (onPacketRecieved != null) onPacketRecieved(this, packet);
+                }
+
+                readQueue = new List<Packet>();
             }
         }
 
@@ -101,9 +111,9 @@ namespace BridgeServer
             {
                 while (true)
                 {
-                    if (sendQueue.Count > 0)
+                    lock (sendQueue)
                     {
-                        lock (sendQueue)
+                        if (sendQueue.Count > 0)
                         {
                             byte[] sendBuffer = new byte[0];
 
@@ -117,7 +127,7 @@ namespace BridgeServer
 
                                 if (sendBuffer.Length + packetBytes.Length >= Program.bufferSize) break;
 
-                                Console.WriteLine("Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+                                Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
 
                                 byte[] extendedBytes = new byte[sendBuffer.Length + packetBytes.Length];
 
@@ -138,7 +148,7 @@ namespace BridgeServer
                             {
                                 Packet packet = sendQueue[0];
 
-                                Console.WriteLine("Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
+                                Console.WriteLine("Send Thread: Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
 
                                 sendQueue.RemoveAt(0);
                             }
@@ -148,8 +158,6 @@ namespace BridgeServer
                     }
 
                     Thread.Sleep((int)MathF.Floor(1f / Program.sendRate * 1000f));
-
-                    if (abortDataSenderThread) throw new Exception("Thread Aborted!");
                 }
             }
             catch
@@ -168,22 +176,24 @@ namespace BridgeServer
 
                     int bytesRead = networkStream.Read(bytes, 0, bytes.Length);
 
-                    for (int readPos = 0; readPos < bytesRead;)
+                    lock (readQueue)
                     {
-                        byte[] packetLengthBytes = bytes[readPos..(readPos + 4)];
-                        int packetLength = BitConverter.ToInt32(packetLengthBytes);
+                        for (int readPos = 0; readPos < bytesRead;)
+                        {
+                            byte[] packetLengthBytes = bytes[readPos..(readPos + 4)];
+                            int packetLength = BitConverter.ToInt32(packetLengthBytes);
 
-                        byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
+                            byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
 
-                        Packet packet = new Packet(packetBytes);
+                            Packet packet = new Packet(packetBytes);
 
-                        Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
-                        if (onPacketRecieved != null) onPacketRecieved(this, packet);
+                            Console.WriteLine("Listend Thread: Recieved packet " + packet.packetType + " from " + IP + ":" + port);
 
-                        readPos += packetLength;
+                            readQueue.Add(packet);
+
+                            readPos += packetLength;
+                        }
                     }
-
-                    if (abortDataListenerThread) throw new Exception("Thread Aborted!");
                 }
             }
             catch
@@ -194,13 +204,14 @@ namespace BridgeServer
 
         public void Disconnect(string reason = "unkown")
         {
+            if (connectionMode == ConnectionMode.DISCONNECTED) return;
+
             Console.WriteLine("Disconnected connection " + IP + ":" + port + " because " + reason);
 
             connectionMode = ConnectionMode.DISCONNECTED;
-            if (onConnectionModeUpdated != null) onConnectionModeUpdated(this, connectionMode);
 
-            if (dataListenerThread != null && dataListenerThread.IsAlive) abortDataListenerThread = true;
-            if (dataSenderThread != null && dataSenderThread.IsAlive) abortDataSenderThread = true;
+            if (dataListenerThread != null && dataListenerThread.IsAlive) dataListenerThread.Interrupt();
+            if (dataSenderThread != null && dataSenderThread.IsAlive) dataSenderThread.Interrupt();
 
             if (client != null && networkStream != null && client.Connected)
             {
