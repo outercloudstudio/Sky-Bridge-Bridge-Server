@@ -8,11 +8,6 @@ namespace BridgeServer
     [Serializable]
     public class Packet
     {
-        public enum PacketType
-        {
-            DEBUG_PACKET
-        }
-
         [Serializable]
         public class SerializedValue
         {
@@ -99,18 +94,18 @@ namespace BridgeServer
                     case Type.BOOLEAN:
                         return new SerializedValue(BitConverter.ToBoolean(bytes[8..9]));
                     case Type.STRING:
-                        return new SerializedValue(Encoding.ASCII.GetString(bytes[8..(bytes.Length)]));
+                        return new SerializedValue(Encoding.ASCII.GetString(bytes[8..bytes.Length]));
                 }
 
                 return null;
             }
         }
 
-        public PacketType packetType;
+        public string packetType;
 
         public List<SerializedValue> values = new List<SerializedValue>();
 
-        public Packet(PacketType _packetType)
+        public Packet(string _packetType)
         {
             packetType = _packetType;
         }
@@ -121,11 +116,13 @@ namespace BridgeServer
 
             int packetLength = BitConverter.ToInt32(packetLengthBytes);
 
-            byte[] packetTypeBytes = bytes[4..8];
+            byte[] packetTypeLengthBytes = bytes[4..8];
+            int packetTypeLength = BitConverter.ToInt32(packetTypeLengthBytes);
 
-            packetType = (PacketType)BitConverter.ToInt32(packetTypeBytes);
+            byte[] packetTypeBytes = bytes[8..(8 + packetTypeLength)];
+            packetType = Encoding.ASCII.GetString(packetTypeBytes);
 
-            for (int i = 4 + 4; i < packetLength;)
+            for (int i = 4 + 4 + packetTypeLength; i < packetLength;)
             {
                 byte[] valueLengthBytes = bytes[i..(i + 4)];
                 int valueLength = BitConverter.ToInt32(valueLengthBytes);
@@ -172,6 +169,11 @@ namespace BridgeServer
         {
             int packetLength = 4 + 4;
 
+            byte[] packetTypeBytes = Encoding.ASCII.GetBytes(packetType);
+            byte[] packetTypeLengthBytes = BitConverter.GetBytes(packetTypeBytes.Length);
+
+            packetLength += packetTypeBytes.Length;
+
             foreach (SerializedValue serializedValue in values)
             {
                 packetLength += serializedValue.GetBytes().Length;
@@ -181,9 +183,10 @@ namespace BridgeServer
 
             Buffer.BlockCopy(BitConverter.GetBytes(packetLength), 0, bytes, 0, 4);
 
-            Buffer.BlockCopy(BitConverter.GetBytes((int)packetType), 0, bytes, 4, 4);
+            Buffer.BlockCopy(packetTypeLengthBytes, 0, bytes, 4, 4);
+            Buffer.BlockCopy(packetTypeBytes, 0, bytes, 8, packetTypeBytes.Length);
 
-            int writePos = 4 + 4;
+            int writePos = 4 + 4 + packetTypeBytes.Length;
 
             foreach (SerializedValue serializedValue in values)
             {

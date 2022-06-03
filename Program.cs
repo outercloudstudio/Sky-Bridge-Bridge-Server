@@ -32,7 +32,7 @@ namespace BridgeServer
 
                 if(packetContent.Length > 0)
                 {
-                    connection.SendPacket(new Packet(Packet.PacketType.DEBUG_PACKET).AddValue(packetContent));
+                    connection.SendPacket(new Packet("DEBUG_MESSAGE").AddValue(packetContent));
                 }
 
                 connection.Update();
