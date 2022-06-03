@@ -23,7 +23,9 @@ namespace BridgeServer
         private Thread connectThread;
 
         private Thread dataListenerThread;
+        private bool abortDataListenerThread = false;
         private Thread dataSenderThread;
+        private bool abortDataSenderThread = false;
 
         private TcpClient client;
         private NetworkStream networkStream;
@@ -95,90 +97,110 @@ namespace BridgeServer
 
         public void SendLoop()
         {
-            while (true)
+            try
             {
-                if (sendQueue.Count > 0)
+                while (true)
                 {
-                    lock (sendQueue)
+                    if (sendQueue.Count > 0)
                     {
-                        byte[] sendBuffer = new byte[0];
-
-                        int packetsPacked = 0;
-
-                        while (true)
+                        lock (sendQueue)
                         {
-                            Packet packet = sendQueue[0];
+                            byte[] sendBuffer = new byte[0];
 
-                            byte[] packetBytes = packet.ToBytes();
+                            int packetsPacked = 0;
 
-                            if (sendBuffer.Length + packetBytes.Length >= Program.bufferSize) break;
+                            while (true)
+                            {
+                                Packet packet = sendQueue[0];
 
-                            Console.WriteLine("Sending Packet " + packet.packetType.ToString());
+                                byte[] packetBytes = packet.ToBytes();
 
-                            byte[] extendedBytes = new byte[sendBuffer.Length + packetBytes.Length];
+                                if (sendBuffer.Length + packetBytes.Length >= Program.bufferSize) break;
 
-                            Buffer.BlockCopy(sendBuffer, 0, extendedBytes, 0, sendBuffer.Length);
+                                Console.WriteLine("Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
 
-                            Buffer.BlockCopy(packetBytes, 0, extendedBytes, sendBuffer.Length, packetBytes.Length);
+                                byte[] extendedBytes = new byte[sendBuffer.Length + packetBytes.Length];
 
-                            sendBuffer = extendedBytes;
+                                Buffer.BlockCopy(sendBuffer, 0, extendedBytes, 0, sendBuffer.Length);
 
-                            packetsPacked++;
+                                Buffer.BlockCopy(packetBytes, 0, extendedBytes, sendBuffer.Length, packetBytes.Length);
 
-                            sendQueue.RemoveAt(0);
+                                sendBuffer = extendedBytes;
 
-                            if (sendQueue.Count == 0) break;
+                                packetsPacked++;
+
+                                sendQueue.RemoveAt(0);
+
+                                if (sendQueue.Count == 0) break;
+                            }
+
+                            if (packetsPacked == 0)
+                            {
+                                Packet packet = sendQueue[0];
+
+                                Console.WriteLine("Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
+
+                                sendQueue.RemoveAt(0);
+                            }
+
+                            networkStream.Write(sendBuffer, 0, sendBuffer.Length);
                         }
-
-                        if (packetsPacked == 0)
-                        {
-                            Packet packet = sendQueue[0];
-
-                            Console.WriteLine("Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
-
-                            sendQueue.RemoveAt(0);
-                        }
-
-                        networkStream.Write(sendBuffer, 0, sendBuffer.Length);
                     }
-                }
 
-                Thread.Sleep((int)MathF.Floor(1f / Program.sendRate * 1000f));
+                    Thread.Sleep((int)MathF.Floor(1f / Program.sendRate * 1000f));
+
+                    if (abortDataSenderThread) throw new Exception("Thread Aborted!");
+                }
+            }
+            catch
+            {
+                Disconnect("Send Error");
             }
         }
 
         public void ListenLoop()
         {
-            while (true)
+            try
             {
-                byte[] bytes = new byte[4096];
-
-                int bytesRead = networkStream.Read(bytes, 0, bytes.Length);
-
-                for (int readPos = 0; readPos < bytesRead;)
+                while (true)
                 {
-                    byte[] packetLengthBytes = bytes[readPos..(readPos + 4)];
-                    int packetLength = BitConverter.ToInt32(packetLengthBytes);
+                    byte[] bytes = new byte[4096];
 
-                    byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
+                    int bytesRead = networkStream.Read(bytes, 0, bytes.Length);
 
-                    Packet packet = new Packet(packetBytes);
+                    for (int readPos = 0; readPos < bytesRead;)
+                    {
+                        byte[] packetLengthBytes = bytes[readPos..(readPos + 4)];
+                        int packetLength = BitConverter.ToInt32(packetLengthBytes);
 
-                    if (onPacketRecieved != null) onPacketRecieved(this, packet);
+                        byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
 
-                    readPos += packetLength;
+                        Packet packet = new Packet(packetBytes);
+
+                        Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
+                        if (onPacketRecieved != null) onPacketRecieved(this, packet);
+
+                        readPos += packetLength;
+                    }
+
+                    if (abortDataListenerThread) throw new Exception("Thread Aborted!");
                 }
+            }
+            catch
+            {
+                Disconnect("Listen Error");
             }
         }
 
-        public void Abort()
+        public void Disconnect(string reason = "unkown")
         {
+            Console.WriteLine("Disconnected connection " + IP + ":" + port + " because " + reason);
+
             connectionMode = ConnectionMode.DISCONNECTED;
             if (onConnectionModeUpdated != null) onConnectionModeUpdated(this, connectionMode);
 
-            if (connectThread != null && connectThread.IsAlive) connectThread.Abort();
-            if (dataListenerThread != null && dataListenerThread.IsAlive) dataListenerThread.Abort();
-            if (dataSenderThread != null && dataSenderThread.IsAlive) dataSenderThread.Abort();
+            if (dataListenerThread != null && dataListenerThread.IsAlive) abortDataListenerThread = true;
+            if (dataSenderThread != null && dataSenderThread.IsAlive) abortDataSenderThread = true;
 
             if (client != null && networkStream != null && client.Connected)
             {
