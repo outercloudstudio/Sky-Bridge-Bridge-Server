@@ -12,7 +12,7 @@ namespace BridgeServer
         {
             DEBUG_PACKET,
             HOST_GAME,
-            SEND_ROOMS,
+            READY,
             JOIN_GAME
         }
 

@@ -16,6 +16,8 @@ namespace BridgeServer
         public static int bufferSize = 4096;
         public static int sendRate = 60;
 
+        public static List<Room> rooms = new List<Room>();
+
         public enum ConnectionState
         {
             OFFLINE,
@@ -58,8 +60,26 @@ namespace BridgeServer
             {
                 string roomName = (string)packet.values[0].unserializedValue;
                 string roomID = (string)packet.values[1].unserializedValue;
+                string roomPassword = (string)packet.values[2].unserializedValue;
 
-                Console.WriteLine("Hosting room " + roomName + " with ID " + roomID);
+                Console.WriteLine("Hosting room " + roomName + " with ID " + roomID + " with password " + roomPassword);
+
+                lock (rooms)
+                {
+                    rooms.Add(new Room()
+                    {
+                        name = roomName,
+                        ID = roomID,
+                        password = roomPassword,
+                        hostConnection = connection,
+                    });
+                }
+            }else if (packet.packetType == Packet.PacketType.JOIN_GAME)
+            {
+                string roomID = (string)packet.values[0].unserializedValue;
+                string roomPassword = (string)packet.values[1].unserializedValue;
+
+                Console.WriteLine("Trying to join room " + roomID + " with password " + roomPassword);
             }
         }
 
@@ -73,7 +93,7 @@ namespace BridgeServer
 
                 Console.WriteLine("Connection updated to state " + connectionStates[connections.IndexOf(connection)]);
 
-                connection.QueuePacket(new Packet(Packet.PacketType.SEND_ROOMS).AddValue("ROOMS DATA"));
+                connection.QueuePacket(new Packet(Packet.PacketType.READY));
             }
         }
     }
