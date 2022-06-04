@@ -16,7 +16,7 @@ namespace BridgeServer
         public static int bufferSize = 4096;
         public static int sendRate = 60;
 
-        public static Connection connection;
+        public static List<Connection> connections = new List<Connection>();
 
         public static Thread listenThread;
 
@@ -30,12 +30,23 @@ namespace BridgeServer
                 Console.WriteLine("Enter to continue update loop:");
                 string packetContent = Console.ReadLine();
 
-                if(packetContent.Length > 0)
+                lock (connections)
                 {
-                    connection.SendPacket(new Packet("DEBUG_MESSAGE").AddValue(packetContent));
-                }
+                    Console.WriteLine("Current connections: " + connections.Count);
 
-                connection.Update();
+                    if (packetContent.Length > 0)
+                    {
+                        foreach (Connection connection in connections)
+                        {
+                            connection.SendPacket(new Packet("DEBUG_MESSAGE").AddValue(packetContent));
+                        }
+                    }
+
+                    foreach (Connection connection in connections)
+                    {
+                        connection.Update();
+                    }
+                }
             }
         }
 
@@ -44,13 +55,21 @@ namespace BridgeServer
             TcpListener listener = new TcpListener(IPAddress.Any, port);
             listener.Start();
 
-            TcpClient client = listener.AcceptTcpClient();
+            while (true)
+            {
+                TcpClient client = listener.AcceptTcpClient();
 
-            NetworkStream networkStream = client.GetStream();
+                NetworkStream networkStream = client.GetStream();
 
-            connection = new Connection();
+                Connection connection = new Connection();
 
-            connection.Assign(client, networkStream);
+                lock (connections)
+                {
+                    connections.Add(connection);
+                }
+
+                connection.Assign(client, networkStream);
+            }
         }
     }
 }
