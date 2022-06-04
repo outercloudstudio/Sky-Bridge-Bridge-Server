@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Text;
 
 namespace BridgeServer
 {
@@ -198,6 +195,26 @@ namespace BridgeServer
             }
 
             return bytes;
+        }
+    
+        public float GetFloat(int index)
+        {
+            return (float)values[index].unserializedValue;
+        }
+
+        public int GetInt(int index)
+        {
+            return (int)values[index].unserializedValue;
+        }
+
+        public bool GetBool(int index)
+        {
+            return (bool)values[index].unserializedValue;
+        }
+
+        public string GetString(int index)
+        {
+            return (string)values[index].unserializedValue;
         }
     }
 }

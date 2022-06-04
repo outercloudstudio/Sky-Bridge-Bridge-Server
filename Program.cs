@@ -11,6 +11,12 @@ namespace BridgeServer
 {
     class Program
     {
+        public class Room
+        {
+            public string ID;
+            public Connection host;
+        }
+
         private static int port = 25565;
 
         public static int bufferSize = 4096;
@@ -19,6 +25,8 @@ namespace BridgeServer
         public static int maxConnections = 8;
 
         public static Connection[] connections = new Connection[maxConnections];
+
+        public static List<Room> rooms = new List<Room>();
 
         public static Thread listenThread;
 
@@ -29,6 +37,20 @@ namespace BridgeServer
 
             while (true)
             {
+                for (int i = 0; i < rooms.Count; i++)
+                {
+                    Room room = rooms[i];
+
+                    if (room.host.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                    {
+                        Console.WriteLine("Removing room " + room.ID + " because host disconnected!");
+
+                        rooms.RemoveAt(i);
+
+                        i--;
+                    }
+                }
+
                 foreach (Connection connection in connections)
                 {
                     if(connection != null) connection.Update();
@@ -73,7 +95,17 @@ namespace BridgeServer
         {
             if(packet.packetType == "HOST")
             {
-                Console.WriteLine("HOSTING GAME!");
+                string ID = Guid.NewGuid().ToString();
+
+                Console.WriteLine("Hosted room " + ID);
+
+                rooms.Add(new Room()
+                {
+                    ID = ID,
+                    host = connection
+                });
+
+                connection.SendPacket(new Packet("HOST_INFO").AddValue(ID));
             }else if (packet.packetType == "JOIN")
             {
                 Console.WriteLine("JOINING GAME!");
