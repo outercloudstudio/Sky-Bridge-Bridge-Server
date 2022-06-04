@@ -34,7 +34,6 @@ namespace BridgeServer
                     if(connection != null) connection.Update();
                 }
 
-                Console.WriteLine("Updating!");
                 Thread.Sleep((int)MathF.Floor(1f / 1f * 1000f));
             }
         }
