@@ -16,33 +16,30 @@ namespace BridgeServer
         public static int bufferSize = 4096;
         public static int sendRate = 60;
 
-        public static List<Connection> connections = new List<Connection>();
+        public static int maxConnections = 8;
+
+        public static Connection[] connections = new Connection[maxConnections];
 
         public static Thread listenThread;
 
-        static void Main(string[] args)
+        public static void Main(string[] args)
         {
             listenThread = new Thread(ListenForConnections);
             listenThread.Start();
 
             while (true)
             {
-                //Console.WriteLine("Enter to continue update loop:");
-                //string packetContent = Console.ReadLine();
+                foreach (Connection connection in connections)
+                {
+                    if(connection != null) connection.Update();
+                }
 
                 Console.WriteLine("Updating!");
-
-                lock (connections)
-                {
-                    foreach (Connection connection in connections)
-                    {
-                        connection.Update();
-                    }
-                }
+                Thread.Sleep((int)MathF.Floor(1f / 1f * 1000f));
             }
         }
 
-        static void ListenForConnections()
+        public static void ListenForConnections()
         {
             TcpListener listener = new TcpListener(IPAddress.Any, port);
             listener.Start();
@@ -55,12 +52,32 @@ namespace BridgeServer
 
                 Connection connection = new Connection();
 
+                connection.onPacketRecieved = HandlePacket;
+
                 lock (connections)
                 {
-                    connections.Add(connection);
+                    for (int i = 0; i < connections.Length; i++)
+                    {
+                        if (connections[i] == null)
+                        {
+                            connections[i] = connection;
+                            break;
+                        }
+                    }
                 }
 
                 connection.Assign(client, networkStream);
+            }
+        }
+
+        public static void HandlePacket(Connection connection, Packet packet)
+        {
+            if(packet.packetType == "HOST")
+            {
+                Console.WriteLine("HOSTING GAME!");
+            }else if (packet.packetType == "JOIN")
+            {
+                Console.WriteLine("JOINING GAME!");
             }
         }
     }
