@@ -27,21 +27,13 @@ namespace BridgeServer
 
             while (true)
             {
-                Console.WriteLine("Enter to continue update loop:");
-                string packetContent = Console.ReadLine();
+                //Console.WriteLine("Enter to continue update loop:");
+                //string packetContent = Console.ReadLine();
+
+                Console.WriteLine("Updating!");
 
                 lock (connections)
                 {
-                    Console.WriteLine("Current connections: " + connections.Count);
-
-                    if (packetContent.Length > 0)
-                    {
-                        foreach (Connection connection in connections)
-                        {
-                            connection.SendPacket(new Packet("DEBUG_MESSAGE").AddValue(packetContent));
-                        }
-                    }
-
                     foreach (Connection connection in connections)
                     {
                         connection.Update();
