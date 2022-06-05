@@ -115,6 +115,15 @@ namespace BridgeServer
                 connection.SendPacket(new Packet("HOST_INFO").AddValue(ID));
             }else if (packet.packetType == "JOIN")
             {
+                int connectionIndex = Array.IndexOf(connections, connection);
+
+                if (joinAttempts[connectionIndex] != null)
+                {
+                    connection.SendPacket(new Packet("JOIN_ERROR").AddValue("Already attempting to join room!"));
+
+                    return;
+                }
+
                 string roomID = packet.GetString(0);
 
                 Console.WriteLine("Joining room " + roomID);
@@ -124,9 +133,9 @@ namespace BridgeServer
                 if(room == null)
                 {
                     connection.SendPacket(new Packet("JOIN_ERROR").AddValue("Room does not exist!"));
-                }
 
-                int connectionIndex = Array.IndexOf(connections, connection);
+                    return;
+                }
 
                 string ID = Guid.NewGuid().ToString();
 
