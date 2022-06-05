@@ -27,6 +27,8 @@ namespace BridgeServer
 
         public static int bufferSize = 4096;
         public static int sendRate = 60;
+        public static float timeout = 30;
+        public static float keepalive = 5;
 
         public static int maxConnections = 8;
 
@@ -60,7 +62,7 @@ namespace BridgeServer
 
                 foreach (Connection connection in connections)
                 {
-                    if(connection != null) connection.Update();
+                    if(connection != null) connection.Update(1);
                 }
 
                 Thread.Sleep((int)MathF.Floor(1f / 1f * 1000f));

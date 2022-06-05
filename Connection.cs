@@ -34,6 +34,9 @@ namespace BridgeServer
         public string IP;
         public int port;
 
+        private float timeout = Program.timeout;
+        private float keepalive = Program.keepalive;
+
         private List<Packet> sendQueue = new List<Packet>();
 
         private List<Packet> readQueue = new List<Packet>();
@@ -91,8 +94,11 @@ namespace BridgeServer
             }
         }
 
-        public void Update()
+        public void Update(float delta)
         {
+            timeout -= delta;
+            keepalive -= delta;
+
             lock (readQueue)
             {
                 foreach (Packet packet in readQueue)
@@ -103,6 +109,8 @@ namespace BridgeServer
 
                 readQueue = new List<Packet>();
             }
+
+            if (timeout <= 0) Disconnect("Connection timed out");
         }
 
         public void SendLoop()
@@ -113,14 +121,34 @@ namespace BridgeServer
                 {
                     lock (sendQueue)
                     {
-                        if (sendQueue.Count > 0)
+                        if (sendQueue.Count > 0 || keepalive <= 0)
                         {
                             byte[] sendBuffer = new byte[0];
 
                             int packetsPacked = 0;
 
+                            if(keepalive <= 0)
+                            {
+                                keepalive = Program.keepalive;
+
+                                Packet packet = new Packet("KEEP_ALIVE");
+
+                                byte[] packetBytes = packet.ToBytes();
+
+                                if (sendBuffer.Length + packetBytes.Length < Program.bufferSize)
+                                {
+                                    Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+
+                                    sendBuffer = packetBytes;
+
+                                    packetsPacked++;
+                                }
+                            }
+
                             while (true)
                             {
+                                if (sendQueue.Count == 0) break;
+
                                 Packet packet = sendQueue[0];
 
                                 byte[] packetBytes = packet.ToBytes();
@@ -140,8 +168,6 @@ namespace BridgeServer
                                 packetsPacked++;
 
                                 sendQueue.RemoveAt(0);
-
-                                if (sendQueue.Count == 0) break;
                             }
 
                             if (packetsPacked == 0)
@@ -189,7 +215,14 @@ namespace BridgeServer
 
                             Console.WriteLine("Listend Thread: Recieved packet " + packet.packetType + " from " + IP + ":" + port);
 
-                            readQueue.Add(packet);
+                            if (packet.packetType == "KEEP_ALIVE")
+                            {
+                                timeout = Program.timeout;
+                            }
+                            else
+                            {
+                                readQueue.Add(packet);
+                            }
 
                             readPos += packetLength;
                         }
