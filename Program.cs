@@ -30,7 +30,7 @@ namespace BridgeServer
         public static float timeout = 30;
         public static float keepalive = 5;
 
-        public static int maxConnections = 8;
+        public static int maxConnections = 2;
 
         public static Connection[] connections = new Connection[maxConnections];
         public static JoinAttempt[] joinAttempts = new JoinAttempt[maxConnections];
@@ -60,9 +60,20 @@ namespace BridgeServer
                     }
                 }
 
-                foreach (Connection connection in connections)
+                for (int i = 0; i < connections.Length; i++)
                 {
-                    if(connection != null) connection.Update(1);
+                    Connection connection = connections[i];
+
+                    if(connection != null)
+                    {
+                        connection.Update(1);
+
+                        if(connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                        {
+                            connections[i] = null;
+                            joinAttempts[i] = null;
+                        }
+                    }
                 }
 
                 Thread.Sleep((int)MathF.Floor(1f / 1f * 1000f));
@@ -160,6 +171,20 @@ namespace BridgeServer
                 if (joinAttemptIndex == -1) return;
 
                 connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_REJECTED").AddValue(reason));
+            }
+            else if (packet.packetType == "JOIN_ATTEMPT_ACCEPTED")
+            {
+                string ID = packet.GetString(0);
+
+                int joinAttemptIndex = Array.FindIndex(joinAttempts, _joinAttempt => _joinAttempt != null && _joinAttempt.ID == ID);
+
+                if (joinAttemptIndex == -1) return;
+
+                Room room = rooms.Find(room => room.ID == joinAttempts[joinAttemptIndex].roomID);
+
+                if(room == null) return;
+
+                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_ACCEPTED").AddValue(room.host.IP));
             }
         }
     }
