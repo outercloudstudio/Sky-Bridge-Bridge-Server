@@ -175,6 +175,7 @@ namespace BridgeServer
             else if (packet.packetType == "JOIN_ATTEMPT_ACCEPTED")
             {
                 string ID = packet.GetString(0);
+                int port = packet.GetInt(1);
 
                 int joinAttemptIndex = Array.FindIndex(joinAttempts, _joinAttempt => _joinAttempt != null && _joinAttempt.ID == ID);
 
@@ -184,7 +185,7 @@ namespace BridgeServer
 
                 if(room == null) return;
 
-                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_ACCEPTED").AddValue(room.host.IP));
+                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_ACCEPTED").AddValue(room.host.IP).AddValue(port));
             }
         }
     }

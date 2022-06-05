@@ -137,7 +137,7 @@ namespace BridgeServer
 
                                 if (sendBuffer.Length + packetBytes.Length < Program.bufferSize)
                                 {
-                                    Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+                                    //Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
 
                                     sendBuffer = packetBytes;
 
@@ -213,14 +213,14 @@ namespace BridgeServer
 
                             Packet packet = new Packet(packetBytes);
 
-                            Console.WriteLine("Listend Thread: Recieved packet " + packet.packetType + " from " + IP + ":" + port);
-
                             if (packet.packetType == "KEEP_ALIVE")
                             {
                                 timeout = Program.timeout;
                             }
                             else
                             {
+                                Console.WriteLine("Listend Thread: Recieved packet " + packet.packetType + " from " + IP + ":" + port);
+
                                 readQueue.Add(packet);
                             }
 
