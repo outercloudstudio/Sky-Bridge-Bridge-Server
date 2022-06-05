@@ -30,7 +30,7 @@ namespace BridgeServer
         public static float timeout = 30;
         public static float keepalive = 5;
 
-        public static int maxConnections = 2;
+        public static int maxConnections = 4;
 
         public static Connection[] connections = new Connection[maxConnections];
         public static JoinAttempt[] joinAttempts = new JoinAttempt[maxConnections];
