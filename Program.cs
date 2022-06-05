@@ -17,6 +17,12 @@ namespace BridgeServer
             public Connection host;
         }
 
+        public class JoinAttempt
+        {
+            public string ID;
+            public string roomID;
+        }
+
         private static int port = 25565;
 
         public static int bufferSize = 4096;
@@ -25,6 +31,7 @@ namespace BridgeServer
         public static int maxConnections = 8;
 
         public static Connection[] connections = new Connection[maxConnections];
+        public static JoinAttempt[] joinAttempts = new JoinAttempt[maxConnections];
 
         public static List<Room> rooms = new List<Room>();
 
@@ -93,7 +100,7 @@ namespace BridgeServer
 
         public static void HandlePacket(Connection connection, Packet packet)
         {
-            if(packet.packetType == "HOST")
+            if (packet.packetType == "HOST")
             {
                 string ID = Guid.NewGuid().ToString();
 
@@ -108,7 +115,40 @@ namespace BridgeServer
                 connection.SendPacket(new Packet("HOST_INFO").AddValue(ID));
             }else if (packet.packetType == "JOIN")
             {
-                Console.WriteLine("JOINING GAME!");
+                string roomID = packet.GetString(0);
+
+                Console.WriteLine("Joining room " + roomID);
+
+                Room room = rooms.Find(_room => _room.ID == roomID);
+
+                if(room == null)
+                {
+                    connection.SendPacket(new Packet("JOIN_ERROR").AddValue("Room does not exist!"));
+                }
+
+                int connectionIndex = Array.IndexOf(connections, connection);
+
+                string ID = Guid.NewGuid().ToString();
+
+                joinAttempts[connectionIndex] = new JoinAttempt()
+                {
+                    ID = ID,
+                    roomID = roomID
+                };
+
+                Console.WriteLine("Created join attempt for room " + roomID + " with ID " + ID);
+
+                room.host.SendPacket(new Packet("JOIN_ATTEMPT").AddValue(ID).AddValue(connection.IP));
+            }else if (packet.packetType == "JOIN_ATTEMPT_REJECTED")
+            {
+                string ID = packet.GetString(0);
+                string reason = packet.GetString(1);
+
+                int joinAttemptIndex = Array.FindIndex(joinAttempts, _joinAttempt => _joinAttempt != null && _joinAttempt.ID == ID);
+
+                if (joinAttemptIndex == -1) return;
+
+                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_REJECTED").AddValue(reason));
             }
         }
     }
