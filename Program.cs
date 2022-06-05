@@ -14,13 +14,6 @@ namespace BridgeServer
         public class Room
         {
             public string ID;
-            public Connection host;
-        }
-
-        public class JoinAttempt
-        {
-            public string ID;
-            public string roomID;
         }
 
         private static int port = 25565;
@@ -30,10 +23,8 @@ namespace BridgeServer
         public static float timeout = 30;
         public static float keepalive = 5;
 
-        public static int maxConnections = 4;
-
-        public static Connection[] connections = new Connection[maxConnections];
-        public static JoinAttempt[] joinAttempts = new JoinAttempt[maxConnections];
+        public static int maxLobbyConnections = 4;
+        public static Connection[] lobbyConnections = new Connection[maxLobbyConnections];
 
         public static List<Room> rooms = new List<Room>();
 
@@ -46,23 +37,9 @@ namespace BridgeServer
 
             while (true)
             {
-                for (int i = 0; i < rooms.Count; i++)
+                for (int i = 0; i < lobbyConnections.Length; i++)
                 {
-                    Room room = rooms[i];
-
-                    if (room.host.connectionMode == Connection.ConnectionMode.DISCONNECTED)
-                    {
-                        Console.WriteLine("Removing room " + room.ID + " because host disconnected!");
-
-                        rooms.RemoveAt(i);
-
-                        i--;
-                    }
-                }
-
-                for (int i = 0; i < connections.Length; i++)
-                {
-                    Connection connection = connections[i];
+                    Connection connection = lobbyConnections[i];
 
                     if(connection != null)
                     {
@@ -70,8 +47,7 @@ namespace BridgeServer
 
                         if(connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
                         {
-                            connections[i] = null;
-                            joinAttempts[i] = null;
+                            lobbyConnections[i] = null;
                         }
                     }
                 }
@@ -95,13 +71,13 @@ namespace BridgeServer
 
                 connection.onPacketRecieved = HandlePacket;
 
-                lock (connections)
+                lock (lobbyConnections)
                 {
-                    for (int i = 0; i < connections.Length; i++)
+                    for (int i = 0; i < lobbyConnections.Length; i++)
                     {
-                        if (connections[i] == null)
+                        if (lobbyConnections[i] == null)
                         {
-                            connections[i] = connection;
+                            lobbyConnections[i] = connection;
                             break;
                         }
                     }
@@ -121,21 +97,13 @@ namespace BridgeServer
 
                 rooms.Add(new Room()
                 {
-                    ID = ID,
-                    host = connection
+                    ID = ID
                 });
 
                 connection.SendPacket(new Packet("HOST_INFO").AddValue(ID));
             }else if (packet.packetType == "JOIN")
             {
-                int connectionIndex = Array.IndexOf(connections, connection);
-
-                if (joinAttempts[connectionIndex] != null)
-                {
-                    connection.SendPacket(new Packet("JOIN_ERROR").AddValue("Already attempting to join room!"));
-
-                    return;
-                }
+                int connectionIndex = Array.IndexOf(lobbyConnections, connection);
 
                 string roomID = packet.GetString(0);
 
@@ -150,42 +118,12 @@ namespace BridgeServer
                     return;
                 }
 
-                string ID = Guid.NewGuid().ToString();
+                //Check if room is full
+                //connection.SendPacket(new Packet("JOIN_REJECTED").AddValue("Room is full!"));
 
-                joinAttempts[connectionIndex] = new JoinAttempt()
-                {
-                    ID = ID,
-                    roomID = roomID
-                };
+                //Add connection to room + remove from connections
 
-                Console.WriteLine("Created join attempt for room " + roomID + " with ID " + ID);
-
-                room.host.SendPacket(new Packet("JOIN_ATTEMPT").AddValue(ID).AddValue(connection.IP));
-            }else if (packet.packetType == "JOIN_ATTEMPT_REJECTED")
-            {
-                string ID = packet.GetString(0);
-                string reason = packet.GetString(1);
-
-                int joinAttemptIndex = Array.FindIndex(joinAttempts, _joinAttempt => _joinAttempt != null && _joinAttempt.ID == ID);
-
-                if (joinAttemptIndex == -1) return;
-
-                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_REJECTED").AddValue(reason));
-            }
-            else if (packet.packetType == "JOIN_ATTEMPT_ACCEPTED")
-            {
-                string ID = packet.GetString(0);
-                int port = packet.GetInt(1);
-
-                int joinAttemptIndex = Array.FindIndex(joinAttempts, _joinAttempt => _joinAttempt != null && _joinAttempt.ID == ID);
-
-                if (joinAttemptIndex == -1) return;
-
-                Room room = rooms.Find(room => room.ID == joinAttempts[joinAttemptIndex].roomID);
-
-                if(room == null) return;
-
-                connections[joinAttemptIndex].SendPacket(new Packet("JOIN_ATTEMPT_ACCEPTED").AddValue(room.host.IP).AddValue(port));
+                connection.SendPacket(new Packet("JOIN_ACCEPTED"));
             }
         }
     }
