@@ -11,22 +11,34 @@ namespace BridgeServer
 {
     class Program
     {
+        public class Client
+        {
+            public Connection connection;
+            public string ID;
+
+            public Client(Connection _connection)
+            {
+                connection = _connection;
+                ID = Guid.NewGuid().ToString();
+            }
+        }
+
         public class Room
         {
             public string ID;
-            public Connection[] connections;
+            public Client[] clients;
 
             public Room(string _ID, int maxConnections)
             {
                 ID = _ID;
-                connections = new Connection[maxConnections];
+                clients = new Client[maxConnections];
             }
 
             public int GetOpenIndex()
             {
-                for (int i = 0; i < connections.Length; i++)
+                for (int i = 0; i < clients.Length; i++)
                 {
-                    if (connections[i] == null) return i;
+                    if (clients[i] == null) return i;
                 }
 
                 return -1;
@@ -62,31 +74,31 @@ namespace BridgeServer
 
                     if (room == null) continue;
 
-                    for (int j = 1; j < room.connections.Length; j++)
+                    for (int j = 1; j < room.clients.Length; j++)
                     {
-                        Connection connection = room.connections[i];
+                        if (room.clients[j] == null) continue;
 
-                        if (connection == null) continue;
+                        Connection connection = room.clients[j].connection;
 
                         connection.Update(tickDelay);
 
                         if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
                         {
-                            room.connections[i] = null;
+                            room.clients[j] = null;
 
                             Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID );
                         }
                     }
 
-                    if (room.connections[0].connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                    if (room.clients[0].connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
                     {
-                        for (int j = i; j < room.connections.Length; j++)
+                        for (int j = 1; j < room.clients.Length; j++)
                         {
-                            Connection connection = room.connections[i];
+                            if (room.clients[j] == null) continue;
 
-                            if (connection == null || connection.connectionMode != Connection.ConnectionMode.CONNECTED) continue;
+                            Connection connection = room.clients[j].connection;
 
-                            connection.Disconnect();
+                            connection.Disconnect("Host disconnected!");
 
                             Console.WriteLine("Disconnected connection " + connection.IP + ":" + connection.port + " from room " + room.ID + " because host disconnected");
                         }
@@ -160,11 +172,13 @@ namespace BridgeServer
 
                 Room room = new Room(ID, maxConnections);
 
-                room.connections[0] = connection;
+                Client client = new Client(connection);
+
+                room.clients[0] = client;
 
                 rooms.Add(room);
 
-                connection.SendPacket(new Packet("HOST_INFO").AddValue(ID));
+                connection.SendPacket(new Packet("HOST_INFO").AddValue(ID).AddValue(client.ID));
             }else if (packet.packetType == "JOIN")
             {
                 int connectionIndex = Array.IndexOf(lobbyConnections, connection);
@@ -191,13 +205,15 @@ namespace BridgeServer
                     return;
                 }
 
-                room.connections[openIndex] = connection;
+                Client client = new Client(connection);
+
+                room.clients[openIndex] = client;
 
                 lobbyConnections[connectionIndex] = null;
 
                 Console.WriteLine("Offloaded connection " + connection.IP + ":" + connection.port + " from lobbyConnections.");
 
-                connection.SendPacket(new Packet("JOIN_ACCEPTED"));
+                connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID));
             }
         }
     }
