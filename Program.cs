@@ -143,7 +143,7 @@ namespace BridgeServer
 
                 Connection connection = new Connection();
 
-                connection.onPacketRecieved = HandlePacket;
+                connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet);
 
                 lock (lobbyConnections)
                 {
@@ -161,7 +161,7 @@ namespace BridgeServer
             }
         }
 
-        public static void HandlePacket(Connection connection, Packet packet)
+        public static void HandlePacket(Connection connection, Packet packet, Room room = null)
         {
             if (packet.packetType == "HOST")
             {
@@ -170,13 +170,15 @@ namespace BridgeServer
 
                 Console.WriteLine("Hosted room " + ID);
 
-                Room room = new Room(ID, maxConnections);
+                Room newRoom = new Room(ID, maxConnections);
 
                 Client client = new Client(connection);
 
-                room.clients[0] = client;
+                newRoom.clients[0] = client;
 
-                rooms.Add(room);
+                rooms.Add(newRoom);
+
+                connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet, newRoom);
 
                 connection.SendPacket(new Packet("HOST_INFO").AddValue(ID).AddValue(client.ID));
             }else if (packet.packetType == "JOIN")
@@ -187,16 +189,16 @@ namespace BridgeServer
 
                 Console.WriteLine("Joining room " + roomID);
 
-                Room room = rooms.Find(_room => _room.ID == roomID);
+                Room currentRoom = rooms.Find(_room => _room.ID == roomID);
 
-                if(room == null)
+                if(currentRoom == null)
                 {
                     connection.SendPacket(new Packet("JOIN_REJECTED").AddValue("Room does not exist!"));
 
                     return;
                 }
 
-                int openIndex = room.GetOpenIndex();
+                int openIndex = currentRoom.GetOpenIndex();
 
                 if (openIndex == -1)
                 {
@@ -207,13 +209,30 @@ namespace BridgeServer
 
                 Client client = new Client(connection);
 
-                room.clients[openIndex] = client;
+                currentRoom.clients[openIndex] = client;
 
                 lobbyConnections[connectionIndex] = null;
+
+                connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet, currentRoom);
 
                 Console.WriteLine("Offloaded connection " + connection.IP + ":" + connection.port + " from lobbyConnections.");
 
                 connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID));
+            }else if (packet.packetType == "RELAY")
+            {
+                string target = packet.GetString(1);
+
+                Packet newPacket = new Packet(packet.GetString(0));
+
+                if(newPacket.values.Count > 2) newPacket.values = packet.values.GetRange(2, packet.values.Count - 2);
+
+                int targetIndex = Array.FindIndex(room.clients, client => client.ID == target);
+
+                if (target == "host") targetIndex = 0;
+
+                if (targetIndex == -1) return;
+
+                room.clients[targetIndex].connection.SendPacket(newPacket);
             }
         }
     }
