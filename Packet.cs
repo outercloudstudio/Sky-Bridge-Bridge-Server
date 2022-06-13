@@ -27,6 +27,8 @@ namespace BridgeServer
 
             public object unserializedValue;
 
+            public SerializedValue(){}
+
             public SerializedValue(float value)
             {
                 valueType = Type.FLOAT;
@@ -92,9 +94,15 @@ namespace BridgeServer
                         return new SerializedValue(BitConverter.ToBoolean(bytes[8..9]));
                     case Type.STRING:
                         return new SerializedValue(Encoding.ASCII.GetString(bytes[8..bytes.Length]));
-                }
+                    default:
+                        SerializedValue serializedValue = new SerializedValue()
+                        {
+                            valueType = valueType,
+                            serializedValue = bytes[8..bytes.Length]
+                        };
 
-                return null;
+                        return serializedValue;
+                }
             }
         }
 

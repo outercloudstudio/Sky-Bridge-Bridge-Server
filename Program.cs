@@ -209,6 +209,13 @@ namespace BridgeServer
 
                 Client client = new Client(connection);
 
+                foreach (Client _client in currentRoom.clients)
+                {
+                    if (_client == null) continue;
+
+                    _client.connection.SendPacket(new Packet("PLAYER_JOINED").AddValue(client.ID));
+                }
+
                 currentRoom.clients[openIndex] = client;
 
                 lobbyConnections[connectionIndex] = null;
@@ -217,14 +224,14 @@ namespace BridgeServer
 
                 Console.WriteLine("Offloaded connection " + connection.IP + ":" + connection.port + " from lobbyConnections.");
 
-                connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID));
+                connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID).AddValue(currentRoom.clients.Length));
             }else if (packet.packetType == "RELAY")
             {
                 string target = packet.GetString(1);
 
-                packet.values[1] = new Packet.SerializedValue(Array.Find(room.clients, client => client.connection == connection).ID);
+                packet.values[1] = new Packet.SerializedValue(Array.Find(room.clients, client => client != null && client.connection == connection).ID);
 
-                int targetIndex = Array.FindIndex(room.clients, client => client.ID == target);
+                int targetIndex = Array.FindIndex(room.clients, client => client != null && client.ID == target);
 
                 if (target == "host") targetIndex = 0;
 
