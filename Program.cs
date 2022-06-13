@@ -222,9 +222,7 @@ namespace BridgeServer
             {
                 string target = packet.GetString(1);
 
-                Packet newPacket = new Packet(packet.GetString(0));
-
-                if(newPacket.values.Count > 2) newPacket.values = packet.values.GetRange(2, packet.values.Count - 2);
+                packet.values[1] = new Packet.SerializedValue(Array.Find(room.clients, client => client.connection == connection).ID);
 
                 int targetIndex = Array.FindIndex(room.clients, client => client.ID == target);
 
@@ -232,7 +230,7 @@ namespace BridgeServer
 
                 if (targetIndex == -1) return;
 
-                room.clients[targetIndex].connection.SendPacket(newPacket);
+                room.clients[targetIndex].connection.SendPacket(packet);
             }
         }
     }
