@@ -61,6 +61,29 @@ namespace BridgeServer
 
         public static void Main(string[] args)
         {
+            UdpClient listener = new UdpClient(11000);
+            IPEndPoint remoteIpEndPoint = new IPEndPoint(IPAddress.Any, 11000);
+
+            try
+            {
+                while (true)
+                {
+                    Console.WriteLine("Waiting for broadcast");
+                    byte[] bytes = listener.Receive(ref remoteIpEndPoint);
+
+                    Console.WriteLine($"Received broadcast from {remoteIpEndPoint} :");
+                    Console.WriteLine($" {Encoding.ASCII.GetString(bytes, 0, bytes.Length)}");
+                }
+            }
+            catch (SocketException e)
+            {
+                Console.WriteLine(e);
+            }
+            finally
+            {
+                listener.Close();
+            }
+
             listenThread = new Thread(ListenForConnections);
             listenThread.Start();
 
