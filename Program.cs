@@ -182,9 +182,6 @@ namespace BridgeServer
                     }
                 }
 
-                UdpClient listenerUDP = new UdpClient(11000);
-                IPEndPoint remoteIpEndPoint = new IPEndPoint(IPAddress.Any, 11000);
-
                 connection.Assign(client, networkStream);
             }
         }
@@ -265,7 +262,7 @@ namespace BridgeServer
 
                 if (targetIndex == -1) return;
 
-                room.clients[targetIndex].connection.SendPacket(packet);
+                room.clients[targetIndex].connection.SendPacket(packet, packet.reliability);
             }
         }
     }

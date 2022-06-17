@@ -67,19 +67,29 @@ namespace BridgeServer
             IP = ((IPEndPoint)_TCPClient.Client.RemoteEndPoint).Address.ToString();
             port = ((IPEndPoint)_TCPClient.Client.RemoteEndPoint).Port;
 
-            int localPort = ((IPEndPoint)_TCPClient.Client.LocalEndPoint).Port;
-
             TCPClient = _TCPClient;
-            UDPClient = new UdpClient(localPort);
-
-            UDPClient.Connect(IP, port);
-
             networkStream = _networkStream;
-            remoteIpEndPoint = new IPEndPoint(IPAddress.Any, localPort);
+
+            int UDPPort = GetOpenPort();
+
+            UDPClient = new UdpClient(UDPPort);
+            remoteIpEndPoint = new IPEndPoint(IPAddress.Any, UDPPort);
+
+            SendPacket(new Packet("UDP_INFO").AddValue(UDPPort));
 
             connectionMode = ConnectionMode.CONNECTED;
 
             StartThreads();
+        }
+
+        public void BeginUDP(int port)
+        {
+            Console.WriteLine("Begginning UDP! " + port);
+
+            UDPClient.Connect(IP, port);
+
+            dataListenerUnreliableThread = new Thread(ListenLoopUnreliable);
+            dataListenerUnreliableThread.Start();
         }
 
         public void ConnectThreaded()
@@ -90,12 +100,12 @@ namespace BridgeServer
 
                 networkStream = TCPClient.GetStream();
 
-                int localPort = ((IPEndPoint)TCPClient.Client.LocalEndPoint).Port;
+                int UDPPort = GetOpenPort();
 
-                UDPClient = new UdpClient(localPort);
-                remoteIpEndPoint = new IPEndPoint(IPAddress.Any, localPort);
+                UDPClient = new UdpClient(UDPPort);
+                remoteIpEndPoint = new IPEndPoint(IPAddress.Any, UDPPort);
 
-                UDPClient.Connect(IP, port);
+                SendPacket(new Packet("UDP_INFO").AddValue(UDPPort));
 
                 connectionMode = ConnectionMode.CONNECTED;
 
@@ -113,11 +123,9 @@ namespace BridgeServer
         {
             dataSenderThread = new Thread(SendLoop);
             dataListenerThread = new Thread(ListenLoop);
-            dataListenerUnreliableThread = new Thread(ListenLoopUnreliable);
-
+            
             dataSenderThread.Start();
             dataListenerThread.Start();
-            dataListenerUnreliableThread.Start();
         }
 
         public void SendPacket(Packet packet, PacketReliability reliability = PacketReliability.RELIABLE)
@@ -161,7 +169,7 @@ namespace BridgeServer
             {
                 while (true)
                 {
-                    lock (sendQueue) lock (readQueue)
+                    lock (sendQueue) lock (sendQueueUnreliable)
                         {
                             if (sendQueue.Count > 0 || keepalive <= 0)
                             {
@@ -262,11 +270,17 @@ namespace BridgeServer
 
                             byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
 
-                            Packet packet = new Packet(packetBytes);
+                            Packet packet = new Packet(packetBytes, PacketReliability.RELIABLE);
 
                             if (packet.packetType == "KEEP_ALIVE")
                             {
                                 timeout = Program.timeout;
+                            }
+                            else if(packet.packetType == "UDP_INFO")
+                            {
+                                int UDPPort = packet.GetInt(0);
+
+                                BeginUDP(UDPPort);
                             }
                             else
                             {
@@ -280,8 +294,10 @@ namespace BridgeServer
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine(ex);
+
                 Disconnect("Listen Error");
             }
         }
@@ -304,9 +320,9 @@ namespace BridgeServer
 
                             byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
 
-                            Packet packet = new Packet(packetBytes);
+                            Packet packet = new Packet(packetBytes, PacketReliability.UNRELIABLE);
 
-                            //Debug.Log("Listend Thread: Recieved unreliable packet " + packet.packetType + " from " + IP + ":" + port);
+                            Console.WriteLine("Listend Thread: Recieved unreliable packet " + packet.packetType + " from " + IP + ":" + port);
 
                             readQueue.Add(packet);
 
@@ -315,9 +331,11 @@ namespace BridgeServer
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                Disconnect("Listen Error");
+                Console.WriteLine(ex);
+
+                Disconnect("Unreliable Listen Error");
             }
         }
 
@@ -341,12 +359,16 @@ namespace BridgeServer
             }
         }
 
-        static int FreeTcpPort()
+        public static int GetOpenPort()
         {
             TcpListener l = new TcpListener(IPAddress.Loopback, 0);
+
             l.Start();
+
             int port = ((IPEndPoint)l.LocalEndpoint).Port;
+
             l.Stop();
+
             return port;
         }
     }

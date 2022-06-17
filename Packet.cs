@@ -110,6 +110,8 @@ namespace BridgeServer
 
         public List<SerializedValue> values = new List<SerializedValue>();
 
+        public Connection.PacketReliability reliability;
+
         public Packet(string _packetType)
         {
             packetType = _packetType;
@@ -117,6 +119,35 @@ namespace BridgeServer
 
         public Packet(byte[] bytes)
         {
+            byte[] packetLengthBytes = bytes[0..4];
+
+            int packetLength = BitConverter.ToInt32(packetLengthBytes);
+
+            byte[] packetTypeLengthBytes = bytes[4..8];
+            int packetTypeLength = BitConverter.ToInt32(packetTypeLengthBytes);
+
+            byte[] packetTypeBytes = bytes[8..(8 + packetTypeLength)];
+            packetType = Encoding.ASCII.GetString(packetTypeBytes);
+
+            for (int i = 4 + 4 + packetTypeLength; i < packetLength;)
+            {
+                byte[] valueLengthBytes = bytes[i..(i + 4)];
+                int valueLength = BitConverter.ToInt32(valueLengthBytes);
+
+                byte[] valueBytes = bytes[i..(i + valueLength)];
+
+                SerializedValue value = SerializedValue.Deserialize(valueBytes);
+
+                values.Add(value);
+
+                i += valueLength;
+            }
+        }
+
+        public Packet(byte[] bytes, Connection.PacketReliability _reliability)
+        {
+            reliability = _reliability;
+
             byte[] packetLengthBytes = bytes[0..4];
 
             int packetLength = BitConverter.ToInt32(packetLengthBytes);
