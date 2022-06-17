@@ -18,15 +18,24 @@ namespace BridgeServer
             DISCONNECTED
         }
 
+        public enum PacketReliability
+        {
+            RELIABLE,
+            UNRELIABLE
+        }
+
         public ConnectionMode connectionMode = ConnectionMode.OFFLINE;
 
         private Thread connectThread;
 
         private Thread dataListenerThread;
+        private Thread dataListenerUnreliableThread;
         private Thread dataSenderThread;
 
-        private TcpClient client;
+        private TcpClient TCPClient;
+        private UdpClient UDPClient;
         private NetworkStream networkStream;
+        private IPEndPoint remoteIpEndPoint;
 
         public delegate void PacketRecieved(Connection connection, Packet packet);
         public PacketRecieved onPacketRecieved;
@@ -38,6 +47,7 @@ namespace BridgeServer
         private float keepalive = Program.keepalive;
 
         private List<Packet> sendQueue = new List<Packet>();
+        private List<Packet> sendQueueUnreliable = new List<Packet>();
 
         private List<Packet> readQueue = new List<Packet>();
 
@@ -52,13 +62,20 @@ namespace BridgeServer
             connectThread.Start();
         }
 
-        public void Assign(TcpClient _client, NetworkStream _networkStream)
+        public void Assign(TcpClient _TCPClient, NetworkStream _networkStream)
         {
-            IP = ((IPEndPoint)_client.Client.RemoteEndPoint).Address.ToString();
-            port = ((IPEndPoint)_client.Client.RemoteEndPoint).Port;
+            IP = ((IPEndPoint)_TCPClient.Client.RemoteEndPoint).Address.ToString();
+            port = ((IPEndPoint)_TCPClient.Client.RemoteEndPoint).Port;
 
-            client = _client;
+            int localPort = ((IPEndPoint)_TCPClient.Client.LocalEndPoint).Port;
+
+            TCPClient = _TCPClient;
+            UDPClient = new UdpClient(localPort);
+
+            UDPClient.Connect(IP, port);
+
             networkStream = _networkStream;
+            remoteIpEndPoint = new IPEndPoint(IPAddress.Any, localPort);
 
             connectionMode = ConnectionMode.CONNECTED;
 
@@ -69,16 +86,25 @@ namespace BridgeServer
         {
             try
             {
-                client = new TcpClient(IP, port);
+                TCPClient = new TcpClient(IP, port);
 
-                networkStream = client.GetStream();
+                networkStream = TCPClient.GetStream();
+
+                int localPort = ((IPEndPoint)TCPClient.Client.LocalEndPoint).Port;
+
+                UDPClient = new UdpClient(localPort);
+                remoteIpEndPoint = new IPEndPoint(IPAddress.Any, localPort);
+
+                UDPClient.Connect(IP, port);
 
                 connectionMode = ConnectionMode.CONNECTED;
 
                 StartThreads();
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine(ex);
+
                 Disconnect("Failed to connect!");
             }
         }
@@ -87,18 +113,27 @@ namespace BridgeServer
         {
             dataSenderThread = new Thread(SendLoop);
             dataListenerThread = new Thread(ListenLoop);
+            dataListenerUnreliableThread = new Thread(ListenLoopUnreliable);
 
             dataSenderThread.Start();
             dataListenerThread.Start();
+            dataListenerUnreliableThread.Start();
         }
 
-        public void SendPacket(Packet packet)
+        public void SendPacket(Packet packet, PacketReliability reliability = PacketReliability.RELIABLE)
         {
-            lock (sendQueue)
-            {
-                Console.WriteLine("Main Thread: Sending packet " + packet.packetType + " to " + IP + ":" + port);
-                sendQueue.Add(packet);
-            }
+            lock (sendQueue) lock (sendQueueUnreliable)
+                {
+                    Console.WriteLine("Main Thread: Sending packet " + packet.packetType + " to " + IP + ":" + port + " " + reliability);
+                    if (reliability == PacketReliability.RELIABLE)
+                    {
+                        sendQueue.Add(packet);
+                    }
+                    else
+                    {
+                        sendQueueUnreliable.Add(packet);
+                    }
+                }
         }
 
         public void Update(float delta)
@@ -126,69 +161,78 @@ namespace BridgeServer
             {
                 while (true)
                 {
-                    lock (sendQueue)
-                    {
-                        if (sendQueue.Count > 0 || keepalive <= 0)
+                    lock (sendQueue) lock (readQueue)
                         {
-                            byte[] sendBuffer = new byte[0];
-
-                            int packetsPacked = 0;
-
-                            if(keepalive <= 0)
+                            if (sendQueue.Count > 0 || keepalive <= 0)
                             {
-                                keepalive = Program.keepalive;
+                                byte[] sendBuffer = new byte[0];
 
-                                Packet packet = new Packet("KEEP_ALIVE");
+                                int packetsPacked = 0;
 
-                                byte[] packetBytes = packet.ToBytes();
-
-                                if (sendBuffer.Length + packetBytes.Length < Program.bufferSize)
+                                if (keepalive <= 0)
                                 {
-                                    //Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+                                    keepalive = Program.keepalive;
 
-                                    sendBuffer = packetBytes;
+                                    Packet packet = new Packet("KEEP_ALIVE");
+
+                                    byte[] packetBytes = packet.ToBytes();
+
+                                    if (sendBuffer.Length + packetBytes.Length < Program.bufferSize)
+                                    {
+                                        //Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+
+                                        sendBuffer = packetBytes;
+
+                                        packetsPacked++;
+                                    }
+                                }
+
+                                while (true)
+                                {
+                                    if (sendQueue.Count == 0) break;
+
+                                    Packet packet = sendQueue[0];
+
+                                    byte[] packetBytes = packet.ToBytes();
+
+                                    if (sendBuffer.Length + packetBytes.Length >= Program.bufferSize) break;
+
+                                    Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
+
+                                    byte[] extendedBytes = new byte[sendBuffer.Length + packetBytes.Length];
+
+                                    Buffer.BlockCopy(sendBuffer, 0, extendedBytes, 0, sendBuffer.Length);
+
+                                    Buffer.BlockCopy(packetBytes, 0, extendedBytes, sendBuffer.Length, packetBytes.Length);
+
+                                    sendBuffer = extendedBytes;
 
                                     packetsPacked++;
+
+                                    sendQueue.RemoveAt(0);
                                 }
+
+                                if (packetsPacked == 0)
+                                {
+                                    Packet packet = sendQueue[0];
+
+                                    Console.WriteLine("Send Thread: Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
+
+                                    sendQueue.RemoveAt(0);
+                                }
+
+                                networkStream.Write(sendBuffer, 0, sendBuffer.Length);
                             }
 
-                            while (true)
+                            foreach (Packet packet in sendQueueUnreliable)
                             {
-                                if (sendQueue.Count == 0) break;
-
-                                Packet packet = sendQueue[0];
-
                                 byte[] packetBytes = packet.ToBytes();
 
-                                if (sendBuffer.Length + packetBytes.Length >= Program.bufferSize) break;
-
-                                Console.WriteLine("Send Thread: Sending Packet " + packet.packetType.ToString() + " to " + IP + ":" + port);
-
-                                byte[] extendedBytes = new byte[sendBuffer.Length + packetBytes.Length];
-
-                                Buffer.BlockCopy(sendBuffer, 0, extendedBytes, 0, sendBuffer.Length);
-
-                                Buffer.BlockCopy(packetBytes, 0, extendedBytes, sendBuffer.Length, packetBytes.Length);
-
-                                sendBuffer = extendedBytes;
-
-                                packetsPacked++;
-
-                                sendQueue.RemoveAt(0);
+                                UDPClient.Send(packetBytes, packetBytes.Length);
                             }
 
-                            if (packetsPacked == 0)
-                            {
-                                Packet packet = sendQueue[0];
-
-                                Console.WriteLine("Send Thread: Dropping Packet Because It Is Too Large To Send! " + packet.packetType + " Length: " + packet.ToBytes().Length);
-
-                                sendQueue.RemoveAt(0);
-                            }
-
-                            networkStream.Write(sendBuffer, 0, sendBuffer.Length);
+                            sendQueueUnreliable = new List<Packet>();
                         }
-                    }
 
                     Thread.Sleep((int)MathF.Floor(1f / Program.sendRate * 1000f));
                 }
@@ -242,6 +286,41 @@ namespace BridgeServer
             }
         }
 
+        public void ListenLoopUnreliable()
+        {
+            try
+            {
+                while (true)
+                {
+                    byte[] bytes = UDPClient.Receive(ref remoteIpEndPoint);
+                    int bytesRead = bytes.Length;
+
+                    lock (readQueue)
+                    {
+                        for (int readPos = 0; readPos < bytesRead;)
+                        {
+                            byte[] packetLengthBytes = bytes[readPos..(readPos + 4)];
+                            int packetLength = BitConverter.ToInt32(packetLengthBytes);
+
+                            byte[] packetBytes = bytes[readPos..(readPos + packetLength)];
+
+                            Packet packet = new Packet(packetBytes);
+
+                            //Debug.Log("Listend Thread: Recieved unreliable packet " + packet.packetType + " from " + IP + ":" + port);
+
+                            readQueue.Add(packet);
+
+                            readPos += packetLength;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                Disconnect("Listen Error");
+            }
+        }
+
         public void Disconnect(string reason = "unkown")
         {
             if (connectionMode == ConnectionMode.DISCONNECTED) return;
@@ -251,13 +330,24 @@ namespace BridgeServer
             connectionMode = ConnectionMode.DISCONNECTED;
 
             if (dataListenerThread != null && dataListenerThread.IsAlive) dataListenerThread.Interrupt();
+            if (dataListenerUnreliableThread != null && dataListenerUnreliableThread.IsAlive) dataListenerUnreliableThread.Interrupt();
             if (dataSenderThread != null && dataSenderThread.IsAlive) dataSenderThread.Interrupt();
 
-            if (client != null && networkStream != null && client.Connected)
+            if (TCPClient != null && networkStream != null && TCPClient.Connected && UDPClient != null)
             {
-                client.Close();
+                TCPClient.Close();
+                UDPClient.Close();
                 networkStream.Close();
             }
+        }
+
+        static int FreeTcpPort()
+        {
+            TcpListener l = new TcpListener(IPAddress.Loopback, 0);
+            l.Start();
+            int port = ((IPEndPoint)l.LocalEndpoint).Port;
+            l.Stop();
+            return port;
         }
     }
 }
