@@ -84,8 +84,6 @@ namespace BridgeServer
 
         public void BeginUDP(int port)
         {
-            Console.WriteLine("Begginning UDP! " + port);
-
             UDPClient.Connect(IP, port);
 
             dataListenerUnreliableThread = new Thread(ListenLoopUnreliable);
@@ -111,10 +109,8 @@ namespace BridgeServer
 
                 StartThreads();
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine(ex);
-
                 Disconnect("Failed to connect!");
             }
         }
@@ -294,10 +290,8 @@ namespace BridgeServer
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine(ex);
-
                 Disconnect("Listen Error");
             }
         }
@@ -331,10 +325,8 @@ namespace BridgeServer
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine(ex);
-
                 Disconnect("Unreliable Listen Error");
             }
         }
