@@ -323,6 +323,8 @@ namespace BridgeServer
                             readPos += packetLength;
                         }
                     }
+
+                    Thread.Sleep((int)MathF.Floor(1f / Program.sendRate * 1000f));
                 }
             }
             catch

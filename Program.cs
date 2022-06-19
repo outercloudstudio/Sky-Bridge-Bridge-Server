@@ -95,7 +95,7 @@ namespace BridgeServer
 
                             room.clients[j] = null;
 
-                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID );
+                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID);
                         }
                     }
 
@@ -119,37 +119,36 @@ namespace BridgeServer
                     }
                 }
 
-                lock (lobbyConnections) {
-                    for (int i = 0; i < lobbyConnections.Length; i++)
+                for (int i = 0; i < lobbyConnections.Length; i++)
+                {
+                    Connection connection = lobbyConnections[i];
+
+                    if (connection == null) continue;
+
+                    connection.Update(tickDelay);
+
+                    if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
                     {
-                        Connection connection = lobbyConnections[i];
+                        lobbyConnections[i] = null;
 
-                        if (connection == null) continue;
-
-                        connection.Update(tickDelay);
-
-                        if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
-                        {
-                            lobbyConnections[i] = null;
-
-                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
-                        }
+                        Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
                     }
-
-                    /*for (int j = 0; j < lobbyConnections.Length; j++)
-                    {
-                        if (lobbyConnections[j] == null)
-                        {
-                            Console.WriteLine("null");
-
-                            continue;
-                        };
-
-                        Console.WriteLine(lobbyConnections[j].connectionMode);
-                    }
-
-                    Console.WriteLine("~~~~~~~~~~~~~~~");*/
                 }
+
+                /*for (int j = 0; j < lobbyConnections.Length; j++)
+                {
+                    if (lobbyConnections[j] == null)
+                    {
+                        Console.WriteLine("null");
+
+                        continue;
+                    };
+
+                    Console.WriteLine(lobbyConnections[j].connectionMode);
+                }
+
+                Console.WriteLine("~~~~~~~~~~~~~~~");*/
+
 
                 Thread.Sleep((int)MathF.Floor(tickDelay * 1000f));
             }
