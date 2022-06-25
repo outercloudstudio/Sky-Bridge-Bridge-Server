@@ -47,22 +47,20 @@ namespace BridgeServer
 
         private static int port = 25565;
 
-        public static int bufferSize = 4096;
-        public static int sendRate = 60;
+        public static int bufferSize = 2048;
         public static float timeout = 30;
         public static float keepalive = 5;
 
-        public static int maxLobbyConnections = 4;
+        public static int maxLobbyConnections = 32;
         public static Connection[] lobbyConnections = new Connection[maxLobbyConnections];
 
         public static List<Room> rooms = new List<Room>();
 
-        public static Thread listenThread;
-
         public static void Main(string[] args)
         {
-            listenThread = new Thread(ListenForConnections);
-            listenThread.Start();
+            TcpListener listener = new TcpListener(IPAddress.Any, port);
+            listener.Start();
+            listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
 
             float tickDelay = 1f / 60f;
 
@@ -135,54 +133,35 @@ namespace BridgeServer
                     }
                 }
 
-                /*for (int j = 0; j < lobbyConnections.Length; j++)
-                {
-                    if (lobbyConnections[j] == null)
-                    {
-                        Console.WriteLine("null");
-
-                        continue;
-                    };
-
-                    Console.WriteLine(lobbyConnections[j].connectionMode);
-                }
-
-                Console.WriteLine("~~~~~~~~~~~~~~~");*/
-
+                ThreadManager.Update();
 
                 Thread.Sleep((int)MathF.Floor(tickDelay * 1000f));
             }
         }
 
-        public static void ListenForConnections()
+        public static void AcceptCallback(IAsyncResult result)
         {
-            TcpListener listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
+            Console.WriteLine("Accepted Client!");
 
-            while (true)
+            TcpListener listener = (TcpListener)result.AsyncState;
+            TcpClient client = listener.EndAcceptTcpClient(result);
+
+            Connection connection = new Connection();
+
+            connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet);
+
+            for (int i = 0; i < lobbyConnections.Length; i++)
             {
-                TcpClient client = listener.AcceptTcpClient();
-
-                NetworkStream networkStream = client.GetStream();
-
-                Connection connection = new Connection();
-
-                connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet);
-
-                lock (lobbyConnections)
+                if (lobbyConnections[i] == null)
                 {
-                    for (int i = 0; i < lobbyConnections.Length; i++)
-                    {
-                        if (lobbyConnections[i] == null)
-                        {
-                            lobbyConnections[i] = connection;
-                            break;
-                        }
-                    }
+                    lobbyConnections[i] = connection;
+                    break;
                 }
-
-                connection.Assign(client, networkStream);
             }
+
+            connection.Assign(client);
+
+            listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
         }
 
         public static void HandlePacket(Connection connection, Packet packet, Room room = null)
