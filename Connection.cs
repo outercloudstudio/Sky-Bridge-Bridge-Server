@@ -182,7 +182,14 @@ namespace BridgeServer
 
             ThreadManager.ExecuteOnMainThread(() =>
             {
-                networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+                try
+                {
+                    networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
             });
         }
 
@@ -203,7 +210,14 @@ namespace BridgeServer
 
                 ThreadManager.ExecuteOnMainThread(() =>
                 {
-                    UDPClient.BeginReceive(new AsyncCallback(ReceiveUnreliableCallback), null);
+                    try
+                    {
+                        UDPClient.BeginReceive(new AsyncCallback(ReceiveUnreliableCallback), null);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
                 });
             }
             catch (Exception ex)
