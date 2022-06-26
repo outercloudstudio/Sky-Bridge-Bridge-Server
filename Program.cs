@@ -58,84 +58,94 @@ namespace BridgeServer
 
         public static void Main(string[] args)
         {
-            TcpListener listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
-            listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
-
-            float tickDelay = 1f / 60f;
-
-            while (true)
+            try
             {
-                for (int i = 0; i < rooms.Count; i++)
+                TcpListener listener = new TcpListener(IPAddress.Any, port);
+                listener.Start();
+                listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
+
+                float tickDelay = 1f / 60f;
+
+                while (true)
                 {
-                    Room room = rooms[i];
-
-                    if (room == null) continue;
-
-                    for (int j = 1; j < room.clients.Length; j++)
+                    for (int i = 0; i < rooms.Count; i++)
                     {
-                        if (room.clients[j] == null) continue;
+                        Room room = rooms[i];
 
-                        Connection connection = room.clients[j].connection;
+                        if (room == null) continue;
 
-                        connection.Update(tickDelay);
-
-                        if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
-                        {
-                            foreach (Client client in room.clients)
-                            {
-                                if (client == null) continue;
-
-                                if (client.connection.connectionMode != Connection.ConnectionMode.CONNECTED) return;
-
-                                client.connection.SendPacket(new Packet("PLAYER_LEFT").AddValue(room.clients[j].ID));
-                            }
-
-                            room.clients[j] = null;
-
-                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID);
-                        }
-                    }
-
-                    if (room.clients[0].connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
-                    {
                         for (int j = 1; j < room.clients.Length; j++)
                         {
                             if (room.clients[j] == null) continue;
 
                             Connection connection = room.clients[j].connection;
 
-                            connection.Disconnect("Host disconnected!");
+                            connection.Update(tickDelay);
 
-                            Console.WriteLine("Disconnected connection " + connection.IP + ":" + connection.port + " from room " + room.ID + " because host disconnected");
+                            if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                            {
+                                foreach (Client client in room.clients)
+                                {
+                                    if (client == null) continue;
+
+                                    if (client.connection.connectionMode != Connection.ConnectionMode.CONNECTED) return;
+
+                                    client.connection.SendPacket(new Packet("PLAYER_LEFT").AddValue(room.clients[j].ID));
+                                }
+
+                                room.clients[j] = null;
+
+                                Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID);
+                            }
                         }
 
-                        rooms.RemoveAt(i);
-                        i--;
+                        if (room.clients[0].connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                        {
+                            for (int j = 1; j < room.clients.Length; j++)
+                            {
+                                if (room.clients[j] == null) continue;
 
-                        Console.WriteLine("Removed room " + room.ID);
+                                Connection connection = room.clients[j].connection;
+
+                                connection.Disconnect("Host disconnected!");
+
+                                Console.WriteLine("Disconnected connection " + connection.IP + ":" + connection.port + " from room " + room.ID + " because host disconnected");
+                            }
+
+                            rooms.RemoveAt(i);
+                            i--;
+
+                            Console.WriteLine("Removed room " + room.ID);
+                        }
                     }
-                }
 
-                for (int i = 0; i < lobbyConnections.Length; i++)
-                {
-                    Connection connection = lobbyConnections[i];
-
-                    if (connection == null) continue;
-
-                    connection.Update(tickDelay);
-
-                    if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                    for (int i = 0; i < lobbyConnections.Length; i++)
                     {
-                        lobbyConnections[i] = null;
+                        Connection connection = lobbyConnections[i];
 
-                        Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
+                        if (connection == null) continue;
+
+                        connection.Update(tickDelay);
+
+                        if (connection.connectionMode == Connection.ConnectionMode.DISCONNECTED)
+                        {
+                            lobbyConnections[i] = null;
+
+                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
+                        }
                     }
+
+                    ThreadManager.Update();
+
+                    Thread.Sleep((int)MathF.Floor(tickDelay * 1000f));
                 }
 
-                ThreadManager.Update();
-
-                Thread.Sleep((int)MathF.Floor(tickDelay * 1000f));
+                Console.ReadLine();
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine(ex);
+                Console.ReadLine();
             }
         }
 
@@ -230,6 +240,8 @@ namespace BridgeServer
                 connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID).AddValue(currentRoom.clients.Length));
             }else if (packet.packetType == "RELAY")
             {
+                Console.WriteLine(packet.GetString(0));
+
                 string target = packet.GetString(1);
 
                 packet.values[1] = new Packet.SerializedValue(Array.Find(room.clients, client => client != null && client.connection == connection).ID);
