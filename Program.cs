@@ -47,7 +47,8 @@ namespace BridgeServer
 
         private static int port = 25565;
 
-        public static int bufferSize = 2048;
+        public static int bufferSize = 4096;
+        public static int bytesPerSecond = bufferSize * 60;
         public static float timeout = 30;
         public static float keepalive = 5;
 
@@ -151,27 +152,33 @@ namespace BridgeServer
 
         public static void AcceptCallback(IAsyncResult result)
         {
-            Console.WriteLine("Accepted Client!");
-
-            TcpListener listener = (TcpListener)result.AsyncState;
-            TcpClient client = listener.EndAcceptTcpClient(result);
-
-            Connection connection = new Connection();
-
-            connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet);
-
-            for (int i = 0; i < lobbyConnections.Length; i++)
+            try
             {
-                if (lobbyConnections[i] == null)
+                Console.WriteLine("Accepted Client!");
+
+                TcpListener listener = (TcpListener)result.AsyncState;
+                TcpClient client = listener.EndAcceptTcpClient(result);
+
+                Connection connection = new Connection();
+
+                connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet);
+
+                for (int i = 0; i < lobbyConnections.Length; i++)
                 {
-                    lobbyConnections[i] = connection;
-                    break;
+                    if (lobbyConnections[i] == null)
+                    {
+                        lobbyConnections[i] = connection;
+                        break;
+                    }
                 }
+
+                connection.Assign(client);
+
+                listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
+            }catch(Exception ex)
+            {
+                Console.WriteLine(ex);
             }
-
-            connection.Assign(client);
-
-            listener.BeginAcceptTcpClient(new AsyncCallback(AcceptCallback), listener);
         }
 
         public static void HandlePacket(Connection connection, Packet packet, Room room = null)

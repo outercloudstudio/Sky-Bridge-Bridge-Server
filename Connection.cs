@@ -42,7 +42,11 @@ namespace BridgeServer
         private float timeout = Program.timeout;
         private float keepalive = Program.keepalive;
 
-        public List<Packet> sendQueue = new List<Packet>();
+        public List<byte> sendQueue = new List<byte>();
+        public int byteCounter;
+        public List<Packet> unreliableSendQueue = new List<Packet>();
+        public List<byte> readStream = new List<byte>();
+        private bool waitingForUDP = false;
 
         public void Connect(string _IP, int _port)
         {
@@ -117,52 +121,48 @@ namespace BridgeServer
 
         public void SendPacket(Packet packet, PacketReliability reliability = PacketReliability.RELIABLE)
         {
-            packet.reliability = reliability;
-
-            sendQueue.Add(packet);
-
-            if (sendQueue.Count == 1) SendCallback(null);
+            if (reliability == PacketReliability.RELIABLE)
+            {
+                if (packet.packetType != "KEEP_ALIVE") Console.WriteLine("Sending packet " + packet.packetType + " to " + IP + ":" + port);
+                sendQueue.AddRange(packet.ToBytes());
+            }
+            else
+            {
+                unreliableSendQueue.Add(packet);
+            }
         }
 
         public void SendCallback(IAsyncResult result)
         {
-            if (sendQueue.Count == 0) return;
 
-            Packet packet = sendQueue[0];
+        }
 
-            sendQueue.RemoveAt(0);
+        public void UnreliableSendCallback(IAsyncResult result)
+        {
+            if (unreliableSendQueue.Count == 0)
+            {
+                waitingForUDP = false;
+
+                return;
+            }
+
+            waitingForUDP = true;
+            Packet packet = unreliableSendQueue[0];
 
             byte[] packetBytes = packet.ToBytes();
 
-            if (packet.reliability == PacketReliability.RELIABLE)
+            unreliableSendQueue.RemoveAt(0);
+
+            Console.WriteLine("Sending unreliable packet " + packet.packetType + " to " + IP + ":" + port);
+
+            try
             {
-                if(packet.packetType != "KEEP_ALIVE") Console.WriteLine("Sending packet " + packet.packetType + " to " + IP + ":" + port);
-
-                try
-                {
-                    networkStream.BeginWrite(packetBytes, 0, packetBytes.Length, SendCallback, null);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-
-                    Disconnect("Send Error");
-                }
+                UDPClient.BeginSend(packetBytes, packetBytes.Length, UnreliableSendCallback, null);
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Sending unreliable packet " + packet.packetType + " to " + IP + ":" + port);
-
-                try
-                {
-                    UDPClient.BeginSend(packetBytes, packetBytes.Length, SendCallback, null);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-
-                    Disconnect("Unreliable Send Error");
-                }
+                Console.WriteLine(ex);
+                Disconnect("Unreliable Send Error");
             }
         }
 
@@ -171,43 +171,7 @@ namespace BridgeServer
             try
             {
                 int bytesRead = networkStream.EndRead(result);
-
-                for (int readPos = 0; readPos < bytesRead;)
-                {
-                    byte[] packetLengthBytes = networkStreamBuffer[readPos..(readPos + 4)];
-                    int packetLength = BitConverter.ToInt32(packetLengthBytes);
-
-                    byte[] packetBytes = networkStreamBuffer[readPos..(readPos + packetLength)];
-
-                    Packet packet = new Packet(packetBytes, PacketReliability.RELIABLE);
-
-                    if (packet.packetType == "KEEP_ALIVE")
-                    {
-                        timeout = Program.timeout;
-                    }
-                    else if (packet.packetType == "UDP_INFO")
-                    {
-                        int UDPPort = packet.GetInt(0);
-
-                        BeginUDP(UDPPort);
-                    }
-                    else
-                    {
-                        Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
-
-                        ThreadManager.ExecuteOnMainThread(() =>
-                        {
-                            if (onPacketRecieved != null) onPacketRecieved(this, packet);
-                        });
-                    }
-
-                    readPos += packetLength;
-                }
-
-                ThreadManager.ExecuteOnMainThread(() =>
-                {
-                    networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
-                });
+                readStream.AddRange(networkStreamBuffer[0..bytesRead]);
             }
             catch (Exception ex)
             {
@@ -215,6 +179,11 @@ namespace BridgeServer
 
                 Disconnect("Listen Error");
             }
+
+            ThreadManager.ExecuteOnMainThread(() =>
+            {
+                networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+            });
         }
 
         public void ReceiveUnreliableCallback(IAsyncResult result)
@@ -252,50 +221,67 @@ namespace BridgeServer
             timeout -= delta;
             keepalive -= delta;
 
-            for (int i = 0; i < Math.Min(sendQueue.Count, 1); i++)
-            {
-                Packet packet = sendQueue[i];
-
-                byte[] packetBytes = packet.ToBytes();
-
-                if (packet.reliability == PacketReliability.RELIABLE)
-                {
-                    Console.WriteLine("Sending packet " + packet.packetType + " to " + IP + ":" + port);
-
-                    try
-                    {
-                        networkStream.BeginWrite(packetBytes, 0, packetBytes.Length, null, null);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex);
-
-                        Disconnect("Send Error");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("Sending unreliable packet " + packet.packetType + " to " + IP + ":" + port);
-
-                    try
-                    {
-                        UDPClient.BeginSend(packetBytes, packetBytes.Length, null, null);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex);
-
-                        Disconnect("Unreliable Send Error");
-                    }
-                }
-            }
-
             if (keepalive <= 0)
             {
                 SendPacket(new Packet("KEEP_ALIVE"));
             
                 keepalive = Program.keepalive;
             }
+
+            byteCounter = Math.Max(byteCounter - (int)Math.Floor(Program.bytesPerSecond * (decimal)delta), 0);
+
+            if (byteCounter == 0)
+            {
+                try
+                {
+                    networkStream.BeginWrite(sendQueue.ToArray(), 0, Math.Min(Program.bufferSize, sendQueue.Count), SendCallback, null);
+
+                    byteCounter += Math.Min(Program.bufferSize, sendQueue.Count);
+
+                    sendQueue.RemoveRange(0, Math.Min(Program.bufferSize, sendQueue.Count));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+
+                    Disconnect("Send Error");
+                }
+            }
+
+            if (readStream.Count > 0)
+            {
+                while (true)
+                {
+                    if (readStream.Count < 4) break;
+
+                    int packetLength = BitConverter.ToInt32(readStream.GetRange(0, 4).ToArray());
+
+                    if (readStream.Count < packetLength) break;
+
+                    Packet packet = new Packet(readStream.GetRange(0, packetLength).ToArray());
+
+                    if (packet.packetType == "KEEP_ALIVE")
+                    {
+                        timeout = Program.timeout;
+                    }
+                    else if (packet.packetType == "UDP_INFO")
+                    {
+                        int UDPPort = packet.GetInt(0);
+
+                        BeginUDP(UDPPort);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
+
+                        if (onPacketRecieved != null) onPacketRecieved(this, packet);
+                    }
+
+                    readStream.RemoveRange(0, packetLength);
+                }
+            }
+
+            if (unreliableSendQueue.Count > 0 && !waitingForUDP) UnreliableSendCallback(null);
 
             if (timeout <= 0) Disconnect("Connection timed out");
         }
