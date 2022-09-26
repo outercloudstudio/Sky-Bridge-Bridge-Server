@@ -67,14 +67,9 @@ namespace SkyBridge
         // Result of TCP Connection
         public void ConnectCallback(IAsyncResult result)
         {
+            if (!TCPClient.Connected) Disconnect("Failed to connect!");
+
             TCPClient.EndConnect(result);
-
-            if (!TCPClient.Connected)
-            {
-                Disconnect("Failed to connect!");
-
-                return;
-            }
 
             networkStream = TCPClient.GetStream();
 
