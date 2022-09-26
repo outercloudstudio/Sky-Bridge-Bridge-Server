@@ -129,12 +129,15 @@ namespace SkyBridge
             byte[] packetTypeBytes = bytes[8..(8 + packetTypeLength)];
             packetType = Encoding.ASCII.GetString(packetTypeBytes);
 
-            for (int i = 4 + 4 + packetTypeLength; i < packetLength;)
+            byte[] payload = bytes[(8 + packetTypeLength)..bytes.Length];
+            // payload = SevenZip.Compression.LZMA.SevenZipHelper.Decompress(payload);
+
+            for (int i = 0; i < payload.Length;)
             {
-                byte[] valueLengthBytes = bytes[i..(i + 4)];
+                byte[] valueLengthBytes = payload[i..(i + 4)];
                 int valueLength = BitConverter.ToInt32(valueLengthBytes);
 
-                byte[] valueBytes = bytes[i..(i + valueLength)];
+                byte[] valueBytes = payload[i..(i + valueLength)];
 
                 SerializedValue value = SerializedValue.Deserialize(valueBytes);
 
@@ -158,12 +161,15 @@ namespace SkyBridge
             byte[] packetTypeBytes = bytes[8..(8 + packetTypeLength)];
             packetType = Encoding.ASCII.GetString(packetTypeBytes);
 
-            for (int i = 4 + 4 + packetTypeLength; i < packetLength;)
+            byte[] payload = bytes[(8 + packetTypeLength)..bytes.Length];
+            // payload = SevenZip.Compression.LZMA.SevenZipHelper.Decompress(payload);
+
+            for (int i = 0; i < payload.Length;)
             {
-                byte[] valueLengthBytes = bytes[i..(i + 4)];
+                byte[] valueLengthBytes = payload[i..(i + 4)];
                 int valueLength = BitConverter.ToInt32(valueLengthBytes);
 
-                byte[] valueBytes = bytes[i..(i + valueLength)];
+                byte[] valueBytes = payload[i..(i + valueLength)];
 
                 SerializedValue value = SerializedValue.Deserialize(valueBytes);
 
@@ -210,10 +216,23 @@ namespace SkyBridge
 
             packetLength += packetTypeBytes.Length;
 
+            byte[] payload = new byte[0];
+
             foreach (SerializedValue serializedValue in values)
             {
-                packetLength += serializedValue.GetBytes().Length;
+                byte[] valueBytes = serializedValue.GetBytes();
+
+                byte[] extendedPayload = new byte[payload.Length + valueBytes.Length];
+
+                Buffer.BlockCopy(payload, 0, extendedPayload, 0, payload.Length);
+                Buffer.BlockCopy(valueBytes, 0, extendedPayload, payload.Length, valueBytes.Length);
+
+                payload = extendedPayload;
             }
+
+            // payload = SevenZip.Compression.LZMA.SevenZipHelper.Compress(payload);
+
+            packetLength += payload.Length;
 
             byte[] bytes = new byte[packetLength];
 
@@ -221,21 +240,11 @@ namespace SkyBridge
 
             Buffer.BlockCopy(packetTypeLengthBytes, 0, bytes, 4, 4);
             Buffer.BlockCopy(packetTypeBytes, 0, bytes, 8, packetTypeBytes.Length);
-
-            int writePos = 4 + 4 + packetTypeBytes.Length;
-
-            foreach (SerializedValue serializedValue in values)
-            {
-                byte[] valueBytes = serializedValue.GetBytes();
-
-                Buffer.BlockCopy(valueBytes, 0, bytes, writePos, valueBytes.Length);
-
-                writePos += valueBytes.Length;
-            }
+            Buffer.BlockCopy(payload, 0, bytes, 8 + packetTypeBytes.Length, payload.Length);
 
             return bytes;
         }
-    
+
         public float GetFloat(int index)
         {
             return (float)values[index].unserializedValue;
