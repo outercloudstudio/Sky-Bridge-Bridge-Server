@@ -7,7 +7,7 @@ using System.Threading;
 using System.Net.Sockets;
 using System.Net;
 
-namespace BridgeServer
+namespace SkyBridge
 {
     class Program
     {
@@ -45,7 +45,7 @@ namespace BridgeServer
             }
         }
 
-        private static int port = 25565;
+        private static int port = 8080;
 
         public static int bufferSize = 4096;
         public static int bytesPerSecond = bufferSize * 60;

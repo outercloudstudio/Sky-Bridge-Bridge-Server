@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace BridgeServer
+namespace SkyBridge
 {
     [Serializable]
     public class Packet

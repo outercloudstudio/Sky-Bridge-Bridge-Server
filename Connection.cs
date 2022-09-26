@@ -5,7 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 
-namespace BridgeServer
+namespace SkyBridge
 {
     [Serializable]
     public class Connection
@@ -48,6 +48,7 @@ namespace BridgeServer
         public List<byte> readStream = new List<byte>();
         private bool waitingForUDP = false;
 
+        // Sets connection up for connection and begins connection asyncs
         public void Connect(string _IP, int _port)
         {
             IP = _IP;
@@ -64,6 +65,7 @@ namespace BridgeServer
             TCPClient.BeginConnect(_IP, _port, new AsyncCallback(ConnectCallback), null);
         }
 
+        // Result of TCP Connection
         public void ConnectCallback(IAsyncResult result)
         {
             TCPClient.EndConnect(result);
@@ -88,6 +90,7 @@ namespace BridgeServer
             connectionMode = ConnectionMode.CONNECTED;
         }
 
+        // Creates connection from an existing tcp client
         public void Assign(TcpClient _TCPClient)
         {
             IP = ((IPEndPoint)_TCPClient.Client.RemoteEndPoint).Address.ToString();
@@ -112,6 +115,7 @@ namespace BridgeServer
             connectionMode = ConnectionMode.CONNECTED;
         }
 
+        // Begins UDP Listening
         public void BeginUDP(int port)
         {
             UDPClient.Connect(IP, port);
@@ -119,6 +123,7 @@ namespace BridgeServer
             UDPClient.BeginReceive(new AsyncCallback(ReceiveUnreliableCallback), null);
         }
 
+        // Queues up a packet
         public void SendPacket(Packet packet, PacketReliability reliability = PacketReliability.RELIABLE)
         {
             if (reliability == PacketReliability.RELIABLE)
@@ -132,11 +137,13 @@ namespace BridgeServer
             }
         }
 
+        // Unused, Called when TCP packet is sent
         public void SendCallback(IAsyncResult result)
         {
 
         }
 
+        // Sends TCP messages, call itselft to send as fast as possible
         public void UnreliableSendCallback(IAsyncResult result)
         {
             if (unreliableSendQueue.Count == 0)
@@ -161,11 +168,11 @@ namespace BridgeServer
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
                 Disconnect("Unreliable Send Error");
             }
         }
 
+        // Callback when received a TCP piece
         public void ReceiveCallback(IAsyncResult result)
         {
             try
@@ -175,24 +182,26 @@ namespace BridgeServer
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
-
                 Disconnect("Listen Error");
             }
 
+            // Tell connection to read TCP again
             ThreadManager.ExecuteOnMainThread(() =>
             {
                 try
                 {
+                    if (connectionMode != ConnectionMode.CONNECTED) return;
+
                     networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
                 }
                 catch(Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    Disconnect("Listen Error");
                 }
             });
         }
 
+        // Callback when a UDP message is receieved
         public void ReceiveUnreliableCallback(IAsyncResult result)
         {
             try
@@ -206,28 +215,24 @@ namespace BridgeServer
                 ThreadManager.ExecuteOnMainThread(() =>
                 {
                     if (onPacketRecieved != null) onPacketRecieved(this, packet);
-                });
 
-                ThreadManager.ExecuteOnMainThread(() =>
-                {
                     try
                     {
                         UDPClient.BeginReceive(new AsyncCallback(ReceiveUnreliableCallback), null);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
+                        Disconnect("Unreliable Listen Error");
                     }
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
-
                 Disconnect("Unreliable Listen Error");
             }
         }
 
+        // Run every tick, handles timing, sends TCP messages, and handles readStream
         public void Update(float delta)
         {
             if (connectionMode != ConnectionMode.CONNECTED) return;
@@ -256,8 +261,6 @@ namespace BridgeServer
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
-
                     Disconnect("Send Error");
                 }
             }
@@ -300,6 +303,7 @@ namespace BridgeServer
             if (timeout <= 0) Disconnect("Connection timed out");
         }
 
+        // Disconnects Connection
         public void Disconnect(string reason = "unkown")
         {
             if (connectionMode == ConnectionMode.DISCONNECTED) return;
@@ -316,6 +320,7 @@ namespace BridgeServer
             }
         }
 
+        // Gets an open port
         public static int GetOpenPort()
         {
             TcpListener l = new TcpListener(IPAddress.Loopback, 0);
