@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 
 namespace SkyBridge
 {
@@ -39,8 +38,8 @@ namespace SkyBridge
         public string IP;
         public int port;
 
-        private float timeout = Program.timeout;
-        private float keepalive = Program.keepalive;
+        private float timeout = SkyBridge.timeout;
+        private float keepalive = SkyBridge.keepalive;
 
         public List<byte> sendQueue = new List<byte>();
         public int byteCounter;
@@ -79,8 +78,8 @@ namespace SkyBridge
 
             networkStream = TCPClient.GetStream();
 
-            networkStreamBuffer = new byte[Program.bufferSize];
-            networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+            networkStreamBuffer = new byte[SkyBridge.bufferSize];
+            networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
 
             ThreadManager.ExecuteOnMainThread(() =>
             {
@@ -104,8 +103,8 @@ namespace SkyBridge
             TCPClient = _TCPClient;
             networkStream = _TCPClient.GetStream();
 
-            networkStreamBuffer = new byte[Program.bufferSize];
-            networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+            networkStreamBuffer = new byte[SkyBridge.bufferSize];
+            networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
 
             ThreadManager.ExecuteOnMainThread(() =>
             {
@@ -192,7 +191,7 @@ namespace SkyBridge
                 {
                     if (connectionMode != ConnectionMode.CONNECTED) return;
 
-                    networkStream.BeginRead(networkStreamBuffer, 0, Program.bufferSize, new AsyncCallback(ReceiveCallback), null);
+                    networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
                 }
                 catch(Exception ex)
                 {
@@ -244,20 +243,20 @@ namespace SkyBridge
             {
                 SendPacket(new Packet("KEEP_ALIVE"));
             
-                keepalive = Program.keepalive;
+                keepalive = SkyBridge.keepalive;
             }
 
-            byteCounter = Math.Max(byteCounter - (int)Math.Floor(Program.bytesPerSecond * (decimal)delta), 0);
+            byteCounter = Math.Max(byteCounter - (int)Math.Floor(SkyBridge.bytesPerSecond * (decimal)delta), 0);
 
             if (byteCounter == 0)
             {
                 try
                 {
-                    networkStream.BeginWrite(sendQueue.ToArray(), 0, Math.Min(Program.bufferSize, sendQueue.Count), SendCallback, null);
+                    networkStream.BeginWrite(sendQueue.ToArray(), 0, Math.Min(SkyBridge.bufferSize, sendQueue.Count), SendCallback, null);
 
-                    byteCounter += Math.Min(Program.bufferSize, sendQueue.Count);
+                    byteCounter += Math.Min(SkyBridge.bufferSize, sendQueue.Count);
 
-                    sendQueue.RemoveRange(0, Math.Min(Program.bufferSize, sendQueue.Count));
+                    sendQueue.RemoveRange(0, Math.Min(SkyBridge.bufferSize, sendQueue.Count));
                 }
                 catch (Exception ex)
                 {
@@ -279,7 +278,7 @@ namespace SkyBridge
 
                     if (packet.packetType == "KEEP_ALIVE")
                     {
-                        timeout = Program.timeout;
+                        timeout = SkyBridge.timeout;
                     }
                     else if (packet.packetType == "UDP_INFO")
                     {

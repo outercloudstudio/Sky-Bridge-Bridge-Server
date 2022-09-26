@@ -47,11 +47,6 @@ namespace SkyBridge
 
         private static int port = 8080;
 
-        public static int bufferSize = 4096;
-        public static int bytesPerSecond = bufferSize * 60;
-        public static float timeout = 30;
-        public static float keepalive = 5;
-
         public static int maxLobbyConnections = 32;
         public static Connection[] lobbyConnections = new Connection[maxLobbyConnections];
 
