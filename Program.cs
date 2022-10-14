@@ -91,7 +91,7 @@ namespace SkyBridge
 
                                 room.clients[j] = null;
 
-                                Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID);
+                                // Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from room " + room.ID);
                             }
                         }
 
@@ -105,13 +105,13 @@ namespace SkyBridge
 
                                 connection.Disconnect("Host disconnected!");
 
-                                Console.WriteLine("Disconnected connection " + connection.IP + ":" + connection.port + " from room " + room.ID + " because host disconnected");
+                                // Console.WriteLine("Disconnected connection " + connection.IP + ":" + connection.port + " from room " + room.ID + " because host disconnected");
                             }
 
                             rooms.RemoveAt(i);
                             i--;
 
-                            Console.WriteLine("Removed room " + room.ID);
+                            // Console.WriteLine("Removed room " + room.ID);
                         }
                     }
 
@@ -127,7 +127,7 @@ namespace SkyBridge
                         {
                             lobbyConnections[i] = null;
 
-                            Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
+                            // Console.WriteLine("Removed connection " + connection.IP + ":" + connection.port + " from lobbyConnections");
                         }
                     }
 
@@ -135,8 +135,6 @@ namespace SkyBridge
 
                     Thread.Sleep((int)MathF.Floor(tickDelay * 1000f));
                 }
-
-                Console.ReadLine();
             }
             catch(Exception ex)
             {
@@ -149,7 +147,7 @@ namespace SkyBridge
         {
             try
             {
-                Console.WriteLine("Accepted Client!");
+                // Console.WriteLine("Accepted Client!");
 
                 TcpListener listener = (TcpListener)result.AsyncState;
                 TcpClient client = listener.EndAcceptTcpClient(result);
@@ -183,7 +181,7 @@ namespace SkyBridge
                 string ID = Guid.NewGuid().ToString();
                 int maxConnections = packet.GetInt(0);
 
-                Console.WriteLine("Hosted room " + ID);
+                // Console.WriteLine("Hosted room " + ID);
 
                 Room newRoom = new Room(ID, maxConnections);
 
@@ -202,7 +200,7 @@ namespace SkyBridge
 
                 string roomID = packet.GetString(0);
 
-                Console.WriteLine("Joining room " + roomID);
+                // Console.WriteLine("Joining room " + roomID);
 
                 Room currentRoom = rooms.Find(_room => _room.ID == roomID);
 
@@ -237,12 +235,12 @@ namespace SkyBridge
 
                 connection.onPacketRecieved = (Connection _connection, Packet _packet) => HandlePacket(_connection, _packet, currentRoom);
 
-                Console.WriteLine("Offloaded connection " + connection.IP + ":" + connection.port + " from lobbyConnections.");
+                // Console.WriteLine("Offloaded connection " + connection.IP + ":" + connection.port + " from lobbyConnections.");
 
                 connection.SendPacket(new Packet("JOIN_ACCEPTED").AddValue(client.ID).AddValue(currentRoom.clients.Length));
             }else if (packet.packetType == "RELAY")
             {
-                Console.WriteLine(packet.GetString(0));
+                // Console.WriteLine(packet.GetString(0));
 
                 string target = packet.GetString(1);
 

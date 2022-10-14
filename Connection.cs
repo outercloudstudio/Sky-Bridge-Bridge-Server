@@ -25,10 +25,10 @@ namespace SkyBridge
 
         public ConnectionMode connectionMode = ConnectionMode.OFFLINE;
 
-        private TcpClient TCPClient;
-        private UdpClient UDPClient;
+        private TcpClient? TCPClient;
+        private UdpClient? UDPClient;
         private int UDPPort;
-        private NetworkStream networkStream;
+        private NetworkStream? networkStream;
         private byte[] networkStreamBuffer; 
         private IPEndPoint remoteIpEndPoint;
 
@@ -67,21 +67,27 @@ namespace SkyBridge
         // Result of TCP Connection
         public void ConnectCallback(IAsyncResult result)
         {
-            if (!TCPClient.Connected) Disconnect("Failed to connect!");
-
-            TCPClient.EndConnect(result);
-
-            networkStream = TCPClient.GetStream();
-
-            networkStreamBuffer = new byte[SkyBridge.bufferSize];
-            networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
-
-            ThreadManager.ExecuteOnMainThread(() =>
+            try
             {
-                SendPacket(new Packet("UDP_INFO").AddValue(UDPPort));
-            });
+                if (!TCPClient.Connected) Disconnect("Failed to connect!");
 
-            connectionMode = ConnectionMode.CONNECTED;
+                TCPClient.EndConnect(result);
+
+                networkStream = TCPClient.GetStream();
+
+                networkStreamBuffer = new byte[SkyBridge.bufferSize];
+                networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
+
+                ThreadManager.ExecuteOnMainThread(() =>
+                {
+                    SendPacket(new Packet("UDP_INFO").AddValue(UDPPort));
+                });
+
+                connectionMode = ConnectionMode.CONNECTED;
+            }catch(Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
 
         // Creates connection from an existing tcp client
@@ -122,7 +128,7 @@ namespace SkyBridge
         {
             if (reliability == PacketReliability.RELIABLE)
             {
-                if (packet.packetType != "KEEP_ALIVE") Console.WriteLine("Sending packet " + packet.packetType + " to " + IP + ":" + port);
+                // if (packet.packetType != "KEEP_ALIVE") Console.WriteLine("Sending packet " + packet.packetType + " to " + IP + ":" + port);
                 sendQueue.AddRange(packet.ToBytes());
             }
             else
@@ -140,29 +146,36 @@ namespace SkyBridge
         // Sends TCP messages, call itselft to send as fast as possible
         public void UnreliableSendCallback(IAsyncResult result)
         {
-            if (unreliableSendQueue.Count == 0)
-            {
-                waitingForUDP = false;
-
-                return;
-            }
-
-            waitingForUDP = true;
-            Packet packet = unreliableSendQueue[0];
-
-            byte[] packetBytes = packet.ToBytes();
-
-            unreliableSendQueue.RemoveAt(0);
-
-            Console.WriteLine("Sending unreliable packet " + packet.packetType + " to " + IP + ":" + port);
-
             try
             {
-                UDPClient.BeginSend(packetBytes, packetBytes.Length, UnreliableSendCallback, null);
+                if (unreliableSendQueue.Count == 0)
+                {
+                    waitingForUDP = false;
+
+                    return;
+                }
+
+                waitingForUDP = true;
+                Packet packet = unreliableSendQueue[0];
+
+                byte[] packetBytes = packet.ToBytes();
+
+                unreliableSendQueue.RemoveAt(0);
+
+                // Console.WriteLine("Sending unreliable packet " + packet.packetType + " to " + IP + ":" + port);
+
+                try
+                {
+                    UDPClient.BeginSend(packetBytes, packetBytes.Length, UnreliableSendCallback, null);
+                }
+                catch (Exception ex)
+                {
+                    Disconnect("Unreliable Send Error");
+                }
             }
             catch (Exception ex)
             {
-                Disconnect("Unreliable Send Error");
+                Console.WriteLine(ex);
             }
         }
 
@@ -171,28 +184,35 @@ namespace SkyBridge
         {
             try
             {
-                int bytesRead = networkStream.EndRead(result);
-                readStream.AddRange(networkStreamBuffer[0..bytesRead]);
-            }
-            catch (Exception ex)
-            {
-                Disconnect("Listen Error");
-            }
-
-            // Tell connection to read TCP again
-            ThreadManager.ExecuteOnMainThread(() =>
-            {
                 try
                 {
-                    if (connectionMode != ConnectionMode.CONNECTED) return;
+                    if (networkStream == null) return;
 
-                    networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
+                    int bytesRead = networkStream.EndRead(result);
+                    readStream.AddRange(networkStreamBuffer[0..bytesRead]);
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     Disconnect("Listen Error");
                 }
-            });
+
+                // Tell connection to read TCP again
+                ThreadManager.ExecuteOnMainThread(() =>
+                {
+                    try
+                    {
+                        networkStream.BeginRead(networkStreamBuffer, 0, SkyBridge.bufferSize, new AsyncCallback(ReceiveCallback), null);
+                    }
+                    catch (Exception ex)
+                    {
+                        Disconnect("Listen Error");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
 
         // Callback when a UDP message is receieved
@@ -200,11 +220,13 @@ namespace SkyBridge
         {
             try
             {
+                if(connectionMode != ConnectionMode.CONNECTED) return;
+
                 byte[] bytes = UDPClient.EndReceive(result, ref remoteIpEndPoint);
 
                 Packet packet = new Packet(bytes, PacketReliability.UNRELIABLE);
 
-                Console.WriteLine("Recieved unreliable packet " + packet.packetType + " from " + IP + ":" + port);
+                // Console.WriteLine("Recieved unreliable packet " + packet.packetType + " from " + IP + ":" + port);
 
                 ThreadManager.ExecuteOnMainThread(() =>
                 {
@@ -229,8 +251,6 @@ namespace SkyBridge
         // Run every tick, handles timing, sends TCP messages, and handles readStream
         public void Update(float delta)
         {
-            if (connectionMode != ConnectionMode.CONNECTED) return;
-
             timeout -= delta;
             keepalive -= delta;
 
@@ -283,7 +303,7 @@ namespace SkyBridge
                     }
                     else
                     {
-                        Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
+                        // Console.WriteLine("Recieved packet " + packet.packetType + " from " + IP + ":" + port);
 
                         if (onPacketRecieved != null) onPacketRecieved(this, packet);
                     }
@@ -308,9 +328,17 @@ namespace SkyBridge
 
             if (TCPClient != null && networkStream != null && TCPClient.Connected && UDPClient != null)
             {
-                TCPClient.Close();
-                UDPClient.Close();
-                networkStream.Close();
+                TcpClient clientToClose = TCPClient;
+                UdpClient udpClientToClose = UDPClient;
+                NetworkStream networkStreamToClose = networkStream;
+
+                TCPClient = null;
+                UDPClient = null;
+                networkStream = null;
+                
+                clientToClose.Close();
+                udpClientToClose.Close();
+                networkStreamToClose.Close();
             }
         }
 
